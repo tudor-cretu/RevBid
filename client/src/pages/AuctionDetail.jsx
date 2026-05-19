@@ -24,6 +24,7 @@ export default function AuctionDetail() {
   const [subLoading,   setSubLoading]   = useState(false);
   const [segments,     setSegments]     = useState([]);
   const [expired,      setExpired]      = useState(false);
+  const [activeImg,    setActiveImg]    = useState(0);
 
   useEffect(() => {
     fetchAuction(); fetchSubscription(); fetchBids(); connectSocket();
@@ -147,11 +148,58 @@ export default function AuctionDetail() {
         <div className="ad-layout">
           {/* Left */}
           <div className="ad-left">
-            {auction.images?.length > 0 && (
-              <div className="ad-images">
-                {auction.images.map((img, i) => (
-                  <img key={i} src={img.url} alt="" className={i === 0 ? 'ad-main-img' : 'ad-thumb-img'} />
-                ))}
+            {/* ── Galerie imagini ── */}
+            {auction.images?.length > 0 ? (
+              <div className="ad-gallery">
+                {/* Imagine principală */}
+                <div className="ad-gallery-main">
+                  <img
+                    key={activeImg}
+                    src={auction.images[activeImg]?.url}
+                    alt={auction.title}
+                    className="ad-gallery-main-img"
+                    onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                  />
+                  <div className="ad-gallery-placeholder" style={{ display: 'none' }}>
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted-gray)" strokeWidth="1.2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
+                    </svg>
+                    <span>Imagine indisponibilă</span>
+                  </div>
+                  {auction.images.length > 1 && (
+                    <span className="ad-gallery-counter">{activeImg + 1} / {auction.images.length}</span>
+                  )}
+                </div>
+
+                {/* Thumbnails — doar dacă sunt cel puțin 2 imagini */}
+                {auction.images.length > 1 && (
+                  <div className="ad-gallery-thumbs">
+                    {auction.images.map((img, i) => (
+                      <button
+                        key={i}
+                        className={`ad-gallery-thumb ${i === activeImg ? 'active' : ''}`}
+                        onClick={() => setActiveImg(i)}
+                        aria-label={`Imaginea ${i + 1}`}
+                        title={`Imaginea ${i + 1}`}
+                      >
+                        <img
+                          src={img.url}
+                          alt={`${auction.title} — ${i + 1}`}
+                          className="ad-gallery-thumb-img"
+                          onError={e => { e.target.style.display = 'none'; }}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Placeholder când nu există imagini */
+              <div className="ad-gallery-empty">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--muted-gray)" strokeWidth="1.2">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
+                </svg>
+                <span>Fără imagini</span>
               </div>
             )}
 
@@ -289,15 +337,96 @@ export default function AuctionDetail() {
       </div>
 
       <style>{`
+        /* ── Layout pagină ── */
         .ad-layout { display: grid; grid-template-columns: 1fr 360px; gap: 1.25rem; align-items: start; }
-        .ad-left { display: flex; flex-direction: column; gap: 1.25rem; }
-        .ad-right { display: flex; flex-direction: column; gap: 1.25rem; }
-        .ad-images { display: flex; gap: 8px; flex-wrap: wrap; }
-        .ad-main-img { width: 100%; max-height: 320px; object-fit: cover; border-radius: var(--radius-lg); }
-        .ad-thumb-img { width: 80px; height: 80px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border); cursor: pointer; }
-        .ad-thumb-img:hover { border-color: var(--bid-teal); }
-        @media (max-width: 900px) {
-          .ad-layout { grid-template-columns: 1fr; }
+        .ad-left   { display: flex; flex-direction: column; gap: 1.25rem; }
+        .ad-right  { display: flex; flex-direction: column; gap: 1.25rem; }
+        @media (max-width: 900px) { .ad-layout { grid-template-columns: 1fr; } }
+
+        /* ── Galerie ── */
+        .ad-gallery { display: flex; flex-direction: column; gap: 10px; }
+
+        /* Container imagine principală — aspect ratio 4:3 */
+        .ad-gallery-main {
+          position: relative; width: 100%; aspect-ratio: 4 / 3;
+          background: var(--ice-blue);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          overflow: hidden;
+        }
+        .ad-gallery-main-img {
+          width: 100%; height: 100%;
+          object-fit: cover;
+          display: block;
+          animation: fadeIn .25s ease;
+        }
+
+        /* Placeholder în imagine principală (onError) */
+        .ad-gallery-placeholder {
+          position: absolute; inset: 0;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          gap: 10px; color: var(--muted-gray);
+          font-size: 0.8125rem;
+        }
+
+        /* Counter "1 / 3" */
+        .ad-gallery-counter {
+          position: absolute; bottom: 10px; right: 12px;
+          background: rgba(3,54,103,0.55);
+          color: white; font-size: 0.6875rem; font-weight: 600;
+          padding: 3px 9px; border-radius: var(--radius-full);
+          letter-spacing: 0.04em; backdrop-filter: blur(4px);
+        }
+
+        /* Rând thumbnails */
+        .ad-gallery-thumbs {
+          display: flex; gap: 8px;
+          overflow-x: auto; padding-bottom: 4px;
+          scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+        }
+        .ad-gallery-thumbs::-webkit-scrollbar { height: 4px; }
+        .ad-gallery-thumbs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* Fiecare thumbnail — buton */
+        .ad-gallery-thumb {
+          flex-shrink: 0;
+          width: 80px; height: 80px;
+          border-radius: var(--radius-md);
+          overflow: hidden;
+          border: 2px solid #DCE8EC;
+          cursor: pointer; padding: 0;
+          background: var(--ice-blue);
+          transition: border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+        }
+        .ad-gallery-thumb:hover {
+          border-color: var(--bid-teal);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 10px rgba(0,169,157,0.18);
+        }
+        .ad-gallery-thumb.active {
+          border-color: var(--bid-teal);
+          box-shadow: 0 0 0 3px rgba(0,169,157,0.18);
+        }
+        .ad-gallery-thumb-img {
+          width: 100%; height: 100%;
+          object-fit: cover; display: block;
+        }
+
+        /* Placeholder galerie goală */
+        .ad-gallery-empty {
+          width: 100%; aspect-ratio: 4 / 3;
+          background: var(--ice-blue);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          gap: 10px; color: var(--muted-gray);
+          font-size: 0.8125rem;
+        }
+
+        /* Mobile */
+        @media (max-width: 600px) {
+          .ad-gallery-thumb { width: 64px; height: 64px; }
         }
       `}</style>
     </div>

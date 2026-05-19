@@ -1,3 +1,5 @@
+'use strict';
+
 const jwt          = require('jsonwebtoken');
 const Auction      = require('../models/Auction');
 const Bid          = require('../models/Bid');
@@ -5,70 +7,140 @@ const Subscription = require('../models/Subscription');
 const User         = require('../models/User');
 const sendMail     = require('../config/mailer');
 const { outbidTemplate } = require('../config/emailTemplates');
+const logger       = require('../utils/logger');
+const EVENTS       = require('../utils/events');
 
 module.exports = (io) => {
 
-  // ── Socket auth middleware ───────────────────────────────────
+  /* ── Socket auth middleware ─────────────────────────────────── */
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
-    if (!token) return next(new Error('Token lipsa'));
+    if (!token) {
+      logger.security(EVENTS.SOCKET.AUTH_FAILED,
+        'Conexiune Socket.IO refuzată — token lipsă', {
+          metadata: { ip: socket.handshake.address },
+        });
+      return next(new Error('Token lipsa'));
+    }
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       socket.user   = decoded;
       next();
-    } catch {
+    } catch (err) {
+      logger.security(EVENTS.SOCKET.AUTH_FAILED,
+        `Conexiune Socket.IO refuzată — token invalid: ${err.message}`, {
+          metadata: { ip: socket.handshake.address, error: err.name },
+        });
       next(new Error('Token invalid'));
     }
   });
 
   io.on('connection', (socket) => {
-    console.log(`User conectat: ${socket.user.id} (${socket.user.role})`);
+    logger.info(EVENTS.SOCKET.CONNECTED,
+      `User conectat via Socket.IO`, {
+        userId:   socket.user.id,
+        userRole: socket.user.role,
+        metadata: { ip: socket.handshake.address },
+      });
 
-    // Fiecare user intra in propriul room pentru notificari personale
+    /* Fiecare user intră în propriul room pentru notificări personale */
     socket.join(`user_${socket.user.id}`);
 
-    // ── Intra in camera licitatiei ───────────────────────────
+    /* ── Intră în camera licitației ──────────────────────────── */
     socket.on('join_auction', (auctionId) => {
       socket.join(auctionId);
-      console.log(`User ${socket.user.id} a intrat in licitatia ${auctionId}`);
+      logger.debug(EVENTS.SOCKET.JOIN_AUCTION,
+        `User a intrat în camera licitației ${auctionId}`, {
+          userId:   socket.user.id,
+          userRole: socket.user.role,
+          entityType: 'auction',
+          entityId:   auctionId,
+        });
     });
 
     socket.on('leave_auction', (auctionId) => {
       socket.leave(auctionId);
+      logger.debug(EVENTS.SOCKET.LEAVE_AUCTION,
+        `User a ieșit din camera licitației ${auctionId}`, {
+          userId:   socket.user.id,
+          entityType: 'auction',
+          entityId:   auctionId,
+        });
     });
 
-    // ── Depune oferta ────────────────────────────────────────
+    /* ── Depune ofertă ──────────────────────────────────────── */
     socket.on('place_bid', async (data, callback) => {
       try {
         const { auctionId, amount, message } = data;
 
-        // ── Validari ──
+        /* ── Validări ── */
         const auction = await Auction.findById(auctionId);
-        if (!auction)                             return callback({ error: 'Licitatia nu exista' });
-        if (auction.status !== 'active')          return callback({ error: 'Licitatia nu e activa' });
-        if (socket.user.role !== 'supplier')      return callback({ error: 'Doar furnizorii pot oferta' });
-        if (auction.buyer.toString() === socket.user.id) return callback({ error: 'Nu poti licita la propria licitatie' });
-        if (amount >= auction.currentPrice)       return callback({ error: `Oferta trebuie sa fie sub ${auction.currentPrice} RON` });
+        if (!auction) {
+          logger.warn(EVENTS.BID.REJECTED, 'Ofertă pe licitație inexistentă', {
+            userId: socket.user.id, entityId: auctionId,
+          });
+          return callback({ error: 'Licitatia nu exista' });
+        }
 
-        // ── Auto-extend ──
+        if (auction.status !== 'active') {
+          logger.warn(EVENTS.BID.REJECTED, 'Ofertă pe licitație inactivă', {
+            userId: socket.user.id, entityType: 'auction', entityId: auctionId,
+            metadata: { status: auction.status },
+          });
+          return callback({ error: 'Licitatia nu e activa' });
+        }
+
+        if (socket.user.role !== 'supplier') {
+          logger.security(EVENTS.BID.UNAUTHORIZED,
+            'Non-furnizor a încercat să depună ofertă', {
+              userId: socket.user.id, userRole: socket.user.role,
+              entityType: 'auction', entityId: auctionId,
+            });
+          return callback({ error: 'Doar furnizorii pot oferta' });
+        }
+
+        if (auction.buyer.toString() === socket.user.id) {
+          logger.security(EVENTS.BID.UNAUTHORIZED,
+            'Buyer a încercat să oferteze la propria licitație', {
+              userId: socket.user.id, entityType: 'auction', entityId: auctionId,
+            });
+          return callback({ error: 'Nu poti licita la propria licitatie' });
+        }
+
+        if (amount >= auction.currentPrice) {
+          logger.warn(EVENTS.BID.INVALID_AMOUNT,
+            'Ofertă respinsă — sumă prea mare', {
+              userId:   socket.user.id,
+              entityType: 'auction', entityId: auctionId,
+              metadata: { offeredAmount: amount, currentPrice: auction.currentPrice },
+            });
+          return callback({ error: `Oferta trebuie sa fie sub ${auction.currentPrice} RON` });
+        }
+
+        /* ── Auto-extend ── */
         const now      = new Date();
         const timeLeft = auction.deadline - now;
         if (auction.autoExtend && timeLeft < 2 * 60 * 1000) {
           auction.deadline = new Date(now.getTime() + 5 * 60 * 1000);
           io.to(auctionId).emit('deadline_extended', { newDeadline: auction.deadline });
+
+          logger.info(EVENTS.AUCTION.DEADLINE_EXTENDED,
+            `Deadline extins automat pentru licitația "${auction.title}"`, {
+              entityType: 'auction', entityId: auctionId,
+              metadata:   { newDeadline: auction.deadline },
+            });
         }
 
-        // ── Gaseste furnizorul supralicitat (oferta castigatoare anterioara) ──
+        /* ── Oferta câștigătoare anterioară ── */
         const previousWinner = await Bid.findOne({
           auction:   auctionId,
           isWinning: true,
           supplier:  { $ne: socket.user.id },
         }).populate('supplier', 'firstName email _id');
 
-        // ── Reseteaza isWinning pe toate ofertele anterioare ──
         await Bid.updateMany({ auction: auctionId }, { isWinning: false });
 
-        // ── Creeaza oferta noua ──
+        /* ── Creează oferta nouă ── */
         const bid = await Bid.create({
           auction:   auctionId,
           supplier:  socket.user.id,
@@ -77,33 +149,42 @@ module.exports = (io) => {
           isWinning: true,
         });
 
-        // ── Actualizeaza pretul curent ──
         auction.currentPrice = amount;
         auction.winningBid   = bid._id;
         await auction.save();
 
-        // ── Auto-abonat la licitatie ──
-        // Furnizorul care oferteza se aboneaza automat
         await Subscription.findOneAndUpdate(
           { user: socket.user.id, auction: auctionId },
           { user: socket.user.id, auction: auctionId },
           { upsert: true, new: true }
         );
 
-        // ── Populeaza oferta pentru emit ──
         const populatedBid = await bid.populate('supplier', 'firstName lastName companyName rating');
 
-        // ── Trimite oferta noua tuturor din camera licitatiei ──
+        /* ── Audit log — ofertă depusă ── */
+        logger.audit(EVENTS.BID.CREATED,
+          `Ofertă depusă: ${amount} RON la "${auction.title}"`, {
+            userId:    socket.user.id,
+            userRole:  socket.user.role,
+            entityType: 'bid',
+            entityId:   bid._id.toString(),
+            metadata: {
+              auctionId,
+              auctionTitle: auction.title,
+              amount,
+              currency:     'RON',
+              previousPrice: auction.currentPrice,
+            },
+          });
+
         io.to(auctionId).emit('new_bid', {
           bid:          populatedBid,
           currentPrice: auction.currentPrice,
         });
 
-        // ── Notifica furnizorul supralicitat ──
+        /* ── Notifică furnizorul supralicitat ── */
         if (previousWinner?.supplier) {
           const prevSupplier = previousWinner.supplier;
-
-          // Email
           if (prevSupplier.email) {
             const { subject, html } = outbidTemplate({
               firstName:    prevSupplier.firstName,
@@ -113,8 +194,6 @@ module.exports = (io) => {
             });
             sendMail({ to: prevSupplier.email, subject, html });
           }
-
-          // Notificare in-app
           io.to(`user_${prevSupplier._id}`).emit('notification', {
             type: 'outbid',
             text: `Ai fost supralicitat la "${auction.title}" — pret nou: ${amount} RON`,
@@ -123,14 +202,11 @@ module.exports = (io) => {
           });
         }
 
-        // ── Colecteaza toti abonati la aceasta licitatie ──
+        /* ── Notifică abonații ── */
         const subscriptions = await Subscription.find({ auction: auctionId })
           .populate('user', 'firstName email _id');
 
-        const notifiedSet = new Set();
-        // Nu notifica cel care a ofertat acum
-        notifiedSet.add(socket.user.id);
-        // Nu notifica din nou furnizorul supralicitat (deja notificat mai sus)
+        const notifiedSet = new Set([socket.user.id]);
         if (previousWinner?.supplier?._id) {
           notifiedSet.add(previousWinner.supplier._id.toString());
         }
@@ -141,7 +217,6 @@ module.exports = (io) => {
           if (notifiedSet.has(uid)) continue;
           notifiedSet.add(uid);
 
-          // Notificare in-app
           io.to(`user_${uid}`).emit('notification', {
             type: 'bid',
             text: `Oferta noua la "${auction.title}": ${amount} RON`,
@@ -149,7 +224,6 @@ module.exports = (io) => {
             time: new Date(),
           });
 
-          // Email
           sendMail({
             to:      sub.user.email,
             subject: `RevBid — Oferta noua la "${auction.title}"`,
@@ -166,23 +240,33 @@ module.exports = (io) => {
                    style="display:inline-block;background:#00A99D;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;font-weight:600">
                   Vezi licitatia
                 </a>
-                <p style="margin-top:24px;font-size:12px;color:#999">RevBid — Platforma de licitatii inverse</p>
               </div>
             `,
           });
         }
 
-        // ── Confirmare pentru emitator ──
         callback({ success: true, bid: populatedBid });
 
       } catch (err) {
-        console.error('place_bid error:', err);
+        logger.error(EVENTS.SOCKET.BID_REJECTED,
+          `Eroare la depunere ofertă: ${err.message}`, {
+            userId:   socket.user?.id,
+            errorName:    err.name,
+            errorMessage: err.message,
+            stack:        err.stack,
+          });
         callback({ error: 'Eroare server: ' + err.message });
       }
     });
 
-    socket.on('disconnect', () => {
-      console.log(`User deconectat: ${socket.user.id}`);
+    /* ── Deconectare ────────────────────────────────────────── */
+    socket.on('disconnect', (reason) => {
+      logger.info(EVENTS.SOCKET.DISCONNECTED,
+        `User deconectat din Socket.IO`, {
+          userId:   socket.user.id,
+          userRole: socket.user.role,
+          metadata: { reason },
+        });
     });
   });
 };

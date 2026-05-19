@@ -1,11 +1,15 @@
-const router          = require('express').Router();
-const Auction         = require('../models/Auction');
-const authMiddleware  = require('../middleware/auth');
-const Bid             = require('../models/Bid');
-const Subscription    = require('../models/Subscription');
-const AuctionChat     = require('../models/AuctionChat');
+'use strict';
 
-// GET /api/auctions — toate licitatiile (filtrate)
+const router         = require('express').Router();
+const Auction        = require('../models/Auction');
+const authMiddleware = require('../middleware/auth');
+const Bid            = require('../models/Bid');
+const Subscription   = require('../models/Subscription');
+const AuctionChat    = require('../models/AuctionChat');
+const logger         = require('../utils/logger');
+const EVENTS         = require('../utils/events');
+
+/* ── GET /api/auctions ─────────────────────────────────────── */
 router.get('/', async (req, res) => {
   try {
     const { category, status } = req.query;
@@ -18,29 +22,49 @@ router.get('/', async (req, res) => {
       .populate('buyer', 'firstName lastName companyName')
       .sort({ createdAt: -1 });
 
+    logger.fromReq(req).debug(EVENTS.AUCTION.FETCH,
+      `Fetch licitații (${auctions.length} rezultate)`, {
+        metadata: { filter },
+      });
+
     res.json(auctions);
   } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
   }
 });
 
-// GET /api/auctions/:id — detalii licitatie
+/* ── GET /api/auctions/:id ─────────────────────────────────── */
 router.get('/:id', async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id)
       .populate('buyer', 'firstName lastName companyName rating');
 
-    if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
+    if (!auction) {
+      logger.fromReq(req).warn(EVENTS.AUCTION.NOT_FOUND,
+        'Licitație inexistentă accesată', {
+          entityType: 'auction',
+          entityId:   req.params.id,
+        });
+      return res.status(404).json({ message: 'Licitatia nu exista' });
+    }
+
     res.json(auction);
   } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
   }
 });
 
-// POST /api/auctions — creaza licitatie (doar buyer)
+/* ── POST /api/auctions ─────────────────────────────────────── */
 router.post('/', authMiddleware, async (req, res) => {
   try {
     if (req.user.role !== 'buyer') {
+      logger.fromReq(req).security(EVENTS.AUCTION.UNAUTHORIZED,
+        'Furnizor a încercat să creeze licitație', {
+          entityType: 'auction',
+          metadata:   { role: req.user.role },
+        });
       return res.status(403).json({ message: 'Doar cumparatorii pot crea licitatii' });
     }
 
@@ -62,63 +86,111 @@ router.post('/', authMiddleware, async (req, res) => {
       status:      'active',
     });
 
-    // Buyer se aboneaza automat la propria licitatie
     await Subscription.findOneAndUpdate(
       { user: req.user.id, auction: auction._id },
       { user: req.user.id, auction: auction._id },
       { upsert: true, new: true }
     );
 
+    logger.fromReq(req).audit(EVENTS.AUCTION.CREATED,
+      `Licitație creată: "${title}"`, {
+        entityType: 'auction',
+        entityId:   auction._id.toString(),
+        metadata: {
+          category,
+          startPrice,
+          targetPrice: targetPrice || null,
+          deadline:    deadline || null,
+          location:    location?.city || null,
+        },
+      });
+
     res.status(201).json(auction);
   } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
   }
 });
 
-// PUT /api/auctions/:id — editeaza (doar buyer-ul propriu)
+/* ── PUT /api/auctions/:id ──────────────────────────────────── */
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
     if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
 
     if (auction.buyer.toString() !== req.user.id) {
+      logger.fromReq(req).security(EVENTS.AUCTION.UNAUTHORIZED,
+        'Tentativă de editare a licitației altui utilizator', {
+          entityType: 'auction',
+          entityId:   req.params.id,
+          metadata:   { ownerId: auction.buyer.toString() },
+        });
       return res.status(403).json({ message: 'Nu ai permisiune' });
     }
+
     if (auction.status === 'closed') {
       return res.status(400).json({ message: 'Licitatia e deja inchisa' });
     }
 
     const allowed = ['title', 'description', 'category', 'tags', 'targetPrice', 'deadline', 'autoExtend', 'location'];
+    const changedFields = [];
     allowed.forEach(field => {
-      if (req.body[field] !== undefined) auction[field] = req.body[field];
+      if (req.body[field] !== undefined) {
+        auction[field] = req.body[field];
+        changedFields.push(field);
+      }
     });
 
     await auction.save();
+
+    logger.fromReq(req).audit(EVENTS.AUCTION.UPDATED,
+      `Licitație actualizată: "${auction.title}"`, {
+        entityType: 'auction',
+        entityId:   auction._id.toString(),
+        metadata:   { changedFields },
+      });
+
     res.json(auction);
   } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
   }
 });
 
-// DELETE /api/auctions/:id — anuleaza licitatie
+/* ── DELETE /api/auctions/:id ───────────────────────────────── */
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
     if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
 
     if (auction.buyer.toString() !== req.user.id && req.user.role !== 'admin') {
+      logger.fromReq(req).security(EVENTS.AUCTION.UNAUTHORIZED,
+        'Tentativă de anulare a licitației fără permisiune', {
+          entityType: 'auction',
+          entityId:   req.params.id,
+          metadata:   { ownerId: auction.buyer.toString() },
+        });
       return res.status(403).json({ message: 'Nu ai permisiune' });
     }
 
     auction.status = 'cancelled';
     await auction.save();
+
+    logger.fromReq(req).audit(EVENTS.AUCTION.CANCELLED,
+      `Licitație anulată: "${auction.title}"`, {
+        entityType: 'auction',
+        entityId:   auction._id.toString(),
+        metadata:   { cancelledBy: req.user.role },
+      });
+
     res.json({ message: 'Licitatia a fost anulata' });
   } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
   }
 });
 
-// GET /api/auctions/:id/chat — istoricul chat-ului
+/* ── GET /api/auctions/:id/chat ─────────────────────────────── */
 router.get('/:id/chat', authMiddleware, async (req, res) => {
   try {
     const messages = await AuctionChat.find({ auction: req.params.id })
@@ -127,11 +199,12 @@ router.get('/:id/chat', authMiddleware, async (req, res) => {
       .limit(100);
     res.json(messages);
   } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
   }
 });
 
-// POST /api/auctions/:id/chat — trimite mesaj in chat
+/* ── POST /api/auctions/:id/chat ────────────────────────────── */
 router.post('/:id/chat', authMiddleware, async (req, res) => {
   try {
     const { content } = req.body;
@@ -145,12 +218,16 @@ router.post('/:id/chat', authMiddleware, async (req, res) => {
     const hasBid  = await Bid.exists({ auction: req.params.id, supplier: req.user.id });
 
     if (!isBuyer && !hasBid) {
+      logger.fromReq(req).security(EVENTS.AUCTION.UNAUTHORIZED,
+        'Acces refuzat la chat licitație — utilizator fără ofertă', {
+          entityType: 'auction',
+          entityId:   req.params.id,
+        });
       return res.status(403).json({
         message: 'Doar cumparatorul si furnizorii care au ofertat pot scrie aici',
       });
     }
 
-    // Salveaza mesajul
     const message   = await AuctionChat.create({
       auction: req.params.id,
       sender:  req.user.id,
@@ -159,14 +236,8 @@ router.post('/:id/chat', authMiddleware, async (req, res) => {
     const populated = await message.populate('sender', 'firstName lastName avatar role');
 
     const io = req.app.get('io');
-
-    // 1. Trimite mesajul in timp real tuturor celor din camera licitatiei
-    //    (inclusiv alti useri care au pagina deschisa acum)
-    //    Sender-ul primeste mesajul direct din raspunsul REST, nu via socket,
-    //    asa ca emitem catre toti CEILALTI din room.
     io.to(req.params.id).emit('auction_chat', populated);
 
-    // 2. Colecteaza destinatarii notificarilor (abonati + ofertanti + buyer)
     const [subscriptions, bids] = await Promise.all([
       Subscription.find({ auction: req.params.id }).select('user'),
       Bid.find({ auction: req.params.id }).distinct('supplier'),
@@ -177,11 +248,8 @@ router.post('/:id/chat', authMiddleware, async (req, res) => {
       ...subscriptions.map(s => s.user.toString()),
       ...bids.map(b => b.toString()),
     ]);
-
-    // Nu notifica expeditorul
     recipientIds.delete(req.user.id);
 
-    // 3. Trimite notificare in-app pentru fiecare destinatar
     const notifText = `${populated.sender.firstName} a scris in chat-ul licitatiei "${auction.title}"`;
     for (const userId of recipientIds) {
       io.to(`user_${userId}`).emit('notification', {
@@ -194,6 +262,7 @@ router.post('/:id/chat', authMiddleware, async (req, res) => {
 
     res.status(201).json(populated);
   } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
   }
 });

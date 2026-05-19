@@ -1,44 +1,75 @@
-import { useEffect, useState } from 'react';
-import { useNavigate }         from 'react-router-dom';
-import { useAuth }             from '../../context/AuthContext';
-import AuctionCard             from '../../components/AuctionCard';
-import { API_URL }             from '../../config';
+import { useEffect, useState, useMemo } from 'react';
+import { useNavigate }                  from 'react-router-dom';
+import { useAuth }                      from '../../context/AuthContext';
+import AuctionCard                      from '../../components/AuctionCard';
+import FilterBar, { useAuctionFilters } from '../../components/SearchAndFilters';
+import { API_URL }                      from '../../config';
 
 export default function BuyerDashboard() {
   const { user, token } = useAuth();
   const navigate        = useNavigate();
-  const [auctions, setAuctions] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [filter, setFilter]     = useState('active');
+  const [allAuctions, setAllAuctions] = useState([]);
+  const [statusFilter,  setStatusFilter]  = useState('active');
+  const [loading,       setLoading]       = useState(true);
 
-  useEffect(() => { fetchMyAuctions(); }, [filter]);
+  /* Licitațiile pentru statusul curent */
+  const auctionsByStatus = useMemo(
+    () => allAuctions.filter(a => a.status === statusFilter),
+    [allAuctions, statusFilter]
+  );
+
+  /* Hook filtre — rulează pe lista filtrată după status */
+  const filters      = useAuctionFilters(auctionsByStatus);
+  const { filtered } = filters;
+
+  /* Categorii disponibile din datele reale */
+  const availableCategories = useMemo(() => {
+    const cats = [...new Set(allAuctions.map(a => a.category).filter(Boolean))];
+    return cats.sort();
+  }, [allAuctions]);
+
+  /* Statistici (pe toate licitațiile, indiferent de filtru) */
+  const counts = useMemo(() => ({
+    active:    allAuctions.filter(a => a.status === 'active').length,
+    closed:    allAuctions.filter(a => a.status === 'closed').length,
+    cancelled: allAuctions.filter(a => a.status === 'cancelled').length,
+  }), [allAuctions]);
+
+  useEffect(() => { fetchMyAuctions(); }, []);
 
   const fetchMyAuctions = async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`${API_URL}/api/auctions?status=${filter}`, { headers: { Authorization: `Bearer ${token}` } });
+      /* Fetch fără filtru de status pentru a putea comuta între taburi instant */
+      const res  = await fetch(`${API_URL}/api/auctions`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
-      setAuctions(data.filter(a => a.buyer._id === user.id || a.buyer === user.id));
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+      /* Filtrează doar licitațiile proprii */
+      setAllAuctions(data.filter(a => a.buyer?._id === user.id || a.buyer === user.id));
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
   };
 
-  const counts = {
-    active:    auctions.filter(a => a.status === 'active').length,
-    closed:    auctions.filter(a => a.status === 'closed').length,
-    cancelled: auctions.filter(a => a.status === 'cancelled').length,
+  /* Resetează filtrele de search când se schimbă statusul */
+  const handleStatusChange = (s) => {
+    setStatusFilter(s);
+    filters.clearAll();
   };
 
   return (
     <div className="page">
       <div className="container">
+
+        {/* Header */}
         <div className="page-header">
           <div>
-            <h1 className="page-title">Buna, {user.firstName}! 👋</h1>
-            <p className="page-subtitle">Gestioneaza licitatiile tale</p>
+            <h1 className="page-title">Bună, {user.firstName}! 👋</h1>
+            <p className="page-subtitle">Gestionează licitațiile tale</p>
           </div>
           <button className="btn btn-primary btn-lg" onClick={() => navigate('/auction/create')}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Licitatie noua
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Licitație nouă
           </button>
         </div>
 
@@ -50,7 +81,7 @@ export default function BuyerDashboard() {
           </div>
           <div className="stat-card">
             <p className="stat-value" style={{ color: 'var(--action-blue)' }}>{counts.closed}</p>
-            <p className="stat-label">Incheiate</p>
+            <p className="stat-label">Încheiate</p>
           </div>
           <div className="stat-card">
             <p className="stat-value" style={{ color: 'var(--warning-amber)' }}>{counts.cancelled}</p>
@@ -58,30 +89,52 @@ export default function BuyerDashboard() {
           </div>
         </div>
 
-        {/* Filters */}
+        {/* Status pills */}
         <div className="filter-pills">
           {['active', 'closed', 'cancelled', 'draft'].map(s => (
-            <button key={s} className={`filter-pill ${filter === s ? 'active' : ''}`} onClick={() => setFilter(s)}>
-              {s}
+            <button
+              key={s}
+              className={`filter-pill ${statusFilter === s ? 'active' : ''}`}
+              onClick={() => handleStatusChange(s)}
+            >
+              {s === 'active' ? 'Active' : s === 'closed' ? 'Încheiate' : s === 'cancelled' ? 'Anulate' : 'Draft'}
             </button>
           ))}
         </div>
 
-        {/* Auctions */}
+        {/* Search & filtre */}
+        {!loading && auctionsByStatus.length > 0 && (
+          <FilterBar
+            filters={filters}
+            total={auctionsByStatus.length}
+            availableCategories={availableCategories}
+          />
+        )}
+
+        {/* Rezultate */}
         {loading ? (
-          <p className="loading-text">Se incarca...</p>
-        ) : auctions.length === 0 ? (
+          <p className="loading-text">Se încarcă...</p>
+        ) : auctionsByStatus.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📋</div>
-            <p className="empty-state-title">Nu ai licitatii cu statusul "{filter}"</p>
-            <p className="empty-state-text">Creeaza prima ta licitatie si lasa furnizorii sa concureze pentru cel mai bun pret.</p>
+            <p className="empty-state-title">Nu ai licitații cu statusul "{statusFilter}"</p>
+            <p className="empty-state-text">Creează prima ta licitație și lasă furnizorii să concureze pentru cel mai bun preț.</p>
             <button className="btn btn-primary" onClick={() => navigate('/auction/create')}>
-              Creeaza prima licitatie
+              Creează prima licitație
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">🔎</div>
+            <p className="empty-state-title">Niciun rezultat pentru filtrele selectate</p>
+            <p className="empty-state-text">Încearcă să modifici criteriile de căutare sau să ștergi unele filtre.</p>
+            <button className="btn btn-outline" onClick={filters.clearAll}>
+              Șterge toate filtrele
             </button>
           </div>
         ) : (
           <div className="auction-grid">
-            {auctions.map(a => <AuctionCard key={a._id} auction={a} />)}
+            {filtered.map(a => <AuctionCard key={a._id} auction={a} />)}
           </div>
         )}
       </div>

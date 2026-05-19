@@ -1,9 +1,21 @@
-const jwt = require('jsonwebtoken');
+'use strict';
 
-module.exports = (req, res, next) => {
+const jwt    = require('jsonwebtoken');
+const logger = require('../utils/logger');
+const EVENTS = require('../utils/events');
+
+/**
+ * Middleware de autentificare JWT.
+ * Loghează orice tentativă de acces cu token invalid/expirat/lipsă.
+ */
+module.exports = function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    logger.fromReq(req).security(EVENTS.AUTH.TOKEN_MISSING,
+      'Request fără token de autentificare', {
+        metadata: { path: req.path },
+      });
     return res.status(401).json({ message: 'Token lipsa' });
   }
 
@@ -14,6 +26,18 @@ module.exports = (req, res, next) => {
     req.user = decoded;
     next();
   } catch (err) {
+    const eventType = err.name === 'TokenExpiredError'
+      ? EVENTS.AUTH.TOKEN_EXPIRED
+      : EVENTS.AUTH.TOKEN_INVALID;
+
+    logger.fromReq(req).security(eventType,
+      `Token JWT invalid: ${err.message}`, {
+        metadata: {
+          errorName: err.name,
+          path:      req.path,
+        },
+      });
+
     return res.status(401).json({ message: 'Token invalid sau expirat' });
   }
 };
