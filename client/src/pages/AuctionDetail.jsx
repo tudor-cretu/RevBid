@@ -25,26 +25,17 @@ export default function AuctionDetail() {
   const [segments,     setSegments]     = useState([]);
   const [expired,      setExpired]      = useState(false);
 
-  // Fetch date initiale
   useEffect(() => {
-    fetchAuction();
-    fetchSubscription();
-    fetchBids();
-    connectSocket();
+    fetchAuction(); fetchSubscription(); fetchBids(); connectSocket();
     return () => socketRef.current?.disconnect();
   }, [id]);
 
-  // Countdown timer
   useEffect(() => {
     if (!auction?.deadline) return;
     const pad = n => String(n).padStart(2, '0');
     const tick = () => {
       const diff = new Date(auction.deadline) - Date.now();
-      if (diff <= 0) {
-        setSegments([]);
-        setExpired(true);
-        return;
-      }
+      if (diff <= 0) { setSegments([]); setExpired(true); return; }
       setExpired(false);
       const d = Math.floor(diff / 86400000);
       const h = Math.floor((diff % 86400000) / 3600000);
@@ -55,347 +46,260 @@ export default function AuctionDetail() {
         : [['ore', pad(h)], ['min', pad(m)], ['sec', pad(s)]]);
     };
     tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
   }, [auction?.deadline]);
 
   const fetchAuction = async () => {
-    try {
-      const res  = await fetch(`${API_URL}/api/auctions/${id}`);
-      const data = await res.json();
-      setAuction(data);
-    } finally {
-      setLoading(false);
-    }
+    try { const res = await fetch(`${API_URL}/api/auctions/${id}`); setAuction(await res.json()); }
+    finally { setLoading(false); }
   };
-
   const fetchBids = async () => {
-    try {
-      const res  = await fetch(`${API_URL}/api/bids/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      setBids(Array.isArray(data) ? data : []);
-    } catch {}
+    try { const res = await fetch(`${API_URL}/api/bids/${id}`, { headers: { Authorization: `Bearer ${token}` } }); const d = await res.json(); setBids(Array.isArray(d) ? d : []); } catch {}
   };
-
   const fetchSubscription = async () => {
-    try {
-      const res  = await fetch(`${API_URL}/api/subscriptions/check/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      setSubscribed(data.subscribed);
-    } catch {}
+    try { const res = await fetch(`${API_URL}/api/subscriptions/check/${id}`, { headers: { Authorization: `Bearer ${token}` } }); const d = await res.json(); setSubscribed(d.subscribed); } catch {}
   };
-
   const toggleSubscription = async () => {
     setSubLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/subscriptions/${id}`, {
-        method:  subscribed ? 'DELETE' : 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      setSubscribed(data.subscribed);
-    } finally {
-      setSubLoading(false);
-    }
+    try { const res = await fetch(`${API_URL}/api/subscriptions/${id}`, { method: subscribed ? 'DELETE' : 'POST', headers: { Authorization: `Bearer ${token}` } }); const d = await res.json(); setSubscribed(d.subscribed); }
+    finally { setSubLoading(false); }
   };
+  const [socketReady, setSocketReady] = useState(false);
 
   const connectSocket = () => {
     const s = io(API_URL, { auth: { token } });
-
     s.on('connect', () => {
       s.emit('join_auction', id);
       setStatus('conectat');
+      setSocketReady(true);
     });
-
+    s.on('connect_error', (err) => {
+      console.error('Socket connect error:', err.message);
+      setStatus('deconectat');
+    });
+    s.on('disconnect', () => setStatus('deconectat'));
     s.on('new_bid', ({ bid, currentPrice }) => {
-      setBids(prev => [...prev, bid]);
+      setBids(prev => {
+        // Deduplicate
+        if (bid._id && prev.some(b => b._id === bid._id)) return prev;
+        return [...prev, bid];
+      });
       setAuction(prev => prev ? { ...prev, currentPrice } : prev);
     });
-
     s.on('auction_closed', () => {
       setAuction(prev => prev ? { ...prev, status: 'closed' } : prev);
     });
-
     s.on('deadline_extended', ({ newDeadline }) => {
       setAuction(prev => prev ? { ...prev, deadline: newDeadline } : prev);
     });
-
     socketRef.current = s;
   };
 
   const placeBid = () => {
     if (!socketRef.current || !amount) return;
     setError('');
-
-    socketRef.current.emit('place_bid',
+    socketRef.current.emit(
+      'place_bid',
       { auctionId: id, amount: parseFloat(amount), message },
       (res) => {
-        if (res.error) setError(res.error);
-        else { setAmount(''); setMessage(''); }
+        if (res.error) {
+          setError(res.error);
+        } else {
+          setAmount('');
+          setMessage('');
+          // Supplier-ul s-a abonat automat — reflecta in UI
+          setSubscribed(true);
+        }
       }
     );
   };
 
-  if (loading) return <p style={{ textAlign: 'center', padding: '3rem', color: '#718096' }}>Se incarca...</p>;
-  if (!auction) return <p style={{ textAlign: 'center', padding: '3rem', color: '#718096' }}>Licitatia nu exista.</p>;
+  if (loading) return <p className="loading-text">Se incarca...</p>;
+  if (!auction) return <div className="empty-state"><div className="empty-state-icon">❌</div><p className="empty-state-title">Licitatia nu exista.</p></div>;
 
   const isActive   = auction.status === 'active';
   const isSupplier = user?.role === 'supplier';
   const isBuyer    = auction.buyer?._id === user?.id || auction.buyer === user?.id;
 
-  return (
-    <div style={styles.page}>
+  const statusCls = { active: 'badge-solid-teal', closed: 'badge-solid-gray', cancelled: 'badge-solid-red', draft: 'badge-solid-amber' }[auction.status] || 'badge-solid-gray';
 
-      {/* Header */}
-      <div style={styles.topBar}>
-        <button style={styles.backBtn} onClick={() => navigate(-1)}>← Inapoi</button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {auction.buyer?._id !== user?.id && auction.buyer !== user?.id && (
+  return (
+    <div className="page">
+      <div className="container">
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', gap: '12px', flexWrap: 'wrap' }}>
+          <button className="btn btn-outline btn-sm" onClick={() => navigate(-1)}>← Inapoi</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
-              style={{
-                ...styles.backBtn,
-                color:       subscribed ? '#e53e3e' : '#38a169',
-                borderColor: subscribed ? '#FED7D7' : '#C6F6D5',
-                background:  subscribed ? '#FFF5F5' : '#F0FFF4',
-              }}
+              className={`btn btn-sm ${subscribed ? 'btn-danger' : 'btn-outline'}`}
               onClick={toggleSubscription}
               disabled={subLoading}
+              title={subscribed ? 'Dezaboneaza-te de la notificari' : 'Aboneaza-te pentru notificari'}
+              style={!subscribed ? { borderColor: 'var(--bid-teal)', color: 'var(--bid-teal)' } : {}}
             >
               {subLoading ? '...' : subscribed ? '🔕 Dezaboneaza-te' : '🔔 Aboneaza-te'}
             </button>
-          )}
-          <span style={{ ...styles.statusBadge, background: statusColor(auction.status) }}>
-            {auction.status}
-          </span>
+            <span className={`badge ${statusCls}`} style={{ fontSize: '0.75rem', padding: '5px 14px' }}>{auction.status}</span>
+          </div>
         </div>
-      </div>
 
-      <div style={styles.layout}>
-
-        {/* Coloana stanga */}
-        <div style={styles.left}>
-
-          {/* Imagini */}
-          {auction.images?.length > 0 && (
-            <div style={styles.images}>
-              {auction.images.map((img, i) => (
-                <img key={i} src={img.url} alt="" style={i === 0 ? styles.mainImg : styles.thumbImg} />
-              ))}
-            </div>
-          )}
-
-          {/* Info licitatie */}
-          <div style={styles.card}>
-            <div style={styles.categoryRow}>
-              <span style={styles.category}>{auction.category}</span>
-              {auction.tags?.map(t => (
-                <span key={t} style={styles.tag}>{t}</span>
-              ))}
-            </div>
-            <h1 style={styles.title}>{auction.title}</h1>
-            <p style={styles.description}>{auction.description}</p>
-
-            {auction.location?.lat && (
-              <div style={{ marginBottom: '12px' }}>
-                <p style={styles.location}>📍 {auction.location.address}</p>
-                <div style={{ marginTop: '8px' }}>
-                  <MapView location={auction.location} />
-                </div>
+        <div className="ad-layout">
+          {/* Left */}
+          <div className="ad-left">
+            {auction.images?.length > 0 && (
+              <div className="ad-images">
+                {auction.images.map((img, i) => (
+                  <img key={i} src={img.url} alt="" className={i === 0 ? 'ad-main-img' : 'ad-thumb-img'} />
+                ))}
               </div>
             )}
 
-            <div style={styles.priceBox}>
-              <div>
-                <p style={styles.priceLabel}>Pret curent</p>
-                <p style={styles.currentPrice}>{auction.currentPrice} RON</p>
+            <div className="card">
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <span className="badge badge-blue">{auction.category}</span>
+                {auction.tags?.map(t => <span key={t} className="badge badge-gray">{t}</span>)}
               </div>
-              {auction.targetPrice && (
-                <div style={{ textAlign: 'right' }}>
-                  <p style={styles.priceLabel}>Pret tinta</p>
-                  <p style={styles.targetPrice}>{auction.targetPrice} RON</p>
+              <h1 style={{ fontSize: '1.375rem', fontWeight: 700, margin: '0 0 8px', color: 'var(--text-heading)' }}>{auction.title}</h1>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-body)', lineHeight: 1.6, marginBottom: '1rem' }}>{auction.description}</p>
+
+              {auction.location?.lat && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '8px' }}>📍 {auction.location.address}</p>
+                  <MapView location={auction.location} />
                 </div>
               )}
-            </div>
 
-            {auction.deadline && (
-              <div style={{ marginBottom: '10px' }}>
-                <p style={styles.deadline}>
-                  ⏰ Deadline: {new Date(auction.deadline).toLocaleString('ro-RO')}
-                </p>
-                {expired ? (
-                  <p style={{ fontSize: '13px', color: '#e53e3e', fontWeight: '600', marginTop: '6px' }}>
-                    Licitatie expirata
-                  </p>
-                ) : segments.length > 0 && (
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'center', marginTop: '8px' }}>
-                    {segments.map(([lbl, val], i) => (
-                      <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={styles.timerSeg}>
-                          <span style={styles.timerVal}>{val}</span>
-                          <span style={styles.timerLbl}>{lbl}</span>
-                        </div>
-                        {i < segments.length - 1 && (
-                          <span style={styles.timerSep}>:</span>
-                        )}
-                      </div>
-                    ))}
+              {/* Price box */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--ice-blue)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginBottom: '12px', alignItems: 'flex-end' }}>
+                <div>
+                  <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500 }}>Pret curent</p>
+                  <p style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--bid-teal)', margin: 0 }}>{auction.currentPrice} RON</p>
+                </div>
+                {auction.targetPrice && (
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500 }}>Pret tinta</p>
+                    <p style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-muted)', margin: 0 }}>{auction.targetPrice} RON</p>
                   </div>
                 )}
               </div>
-            )}
 
-            <p style={styles.buyer}>
-              Postat de:{' '}
-              <span
-                style={{ fontWeight: '600', cursor: 'pointer', textDecoration: 'underline', color: '#3182ce' }}
-                onClick={() => navigate(`/profile/${auction.buyer?._id}`)}
-              >
-                {auction.buyer?.firstName} {auction.buyer?.lastName}
-              </span>
-              {auction.buyer?.companyName && ` · ${auction.buyer.companyName}`}
-            </p>
+              {/* Timer */}
+              {auction.deadline && (
+                <div style={{ marginBottom: '12px', textAlign: 'center' }}>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--warning-amber)', marginBottom: '6px', fontWeight: 500 }}>
+                    ⏰ Deadline: {new Date(auction.deadline).toLocaleString('ro-RO')}
+                  </p>
+                  {expired ? (
+                    <p style={{ fontSize: '0.8125rem', color: 'var(--error-red)', fontWeight: 600 }}>Licitatie expirata</p>
+                  ) : segments.length > 0 && (
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'center', marginTop: '8px' }}>
+                      {segments.map(([lbl, val], i) => (
+                        <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--ice-blue)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '8px 12px', minWidth: '52px' }}>
+                            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-heading)', lineHeight: 1 }}>{val}</span>
+                            <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{lbl}</span>
+                          </div>
+                          {i < segments.length - 1 && <span style={{ fontSize: '1.125rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '14px' }}>:</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                Postat de:{' '}
+                <span style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--action-blue)' }} onClick={() => navigate(`/profile/${auction.buyer?._id}`)}>
+                  {auction.buyer?.firstName} {auction.buyer?.lastName}
+                </span>
+                {auction.buyer?.companyName && ` · ${auction.buyer.companyName}`}
+              </p>
+            </div>
+
+            <PriceChart auctionId={id} startPrice={auction.startPrice} currentPrice={auction.currentPrice} />
+            <AuctionChatBox auctionId={id} socket={socketRef.current} />
           </div>
 
-          {/* Grafic */}
-          <PriceChart
-            auctionId={id}
-            startPrice={auction.startPrice}
-            currentPrice={auction.currentPrice}
-          />
+          {/* Right */}
+          <div className="ad-right">
+            {isActive && isSupplier && !isBuyer && (
+              <div className="card">
+                <h3 className="card-title" style={{ marginBottom: '8px' }}>📝 Depune oferta</h3>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                  Oferta ta trebuie sa fie sub <strong style={{ color: 'var(--bid-teal)' }}>{auction.currentPrice} RON</strong>
+                </p>
+                <input className="form-input" type="number" placeholder={`Sub ${auction.currentPrice} RON`} value={amount} onChange={e => setAmount(e.target.value)} style={{ marginBottom: '8px' }} />
+                <textarea className="form-input" placeholder="Mesaj optional pentru cumparator..." value={message} onChange={e => setMessage(e.target.value)} style={{ height: '70px', resize: 'none', marginBottom: '8px' }} />
+                {error && <div className="alert alert-error" style={{ marginBottom: '8px' }}>{error}</div>}
+                <button className="btn btn-primary btn-block" onClick={placeBid}>Depune oferta</button>
+              </div>
+            )}
 
-          {/* Chatbox */}
-          <AuctionChatBox auctionId={id} socket={socketRef.current} />
-        </div>
+            {!isActive && (
+              <div className="card" style={{ textAlign: 'center', background: 'var(--ice-blue)' }}>
+                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🔒</div>
+                <p style={{ fontWeight: 600, color: 'var(--text-heading)', marginBottom: '4px' }}>Licitatie inchisa</p>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                  Pret final: <strong style={{ color: 'var(--bid-teal)' }}>{auction.currentPrice} RON</strong>
+                </p>
+              </div>
+            )}
 
-        {/* Coloana dreapta */}
-        <div style={styles.right}>
-
-          {/* Form ofertare */}
-          {isActive && isSupplier && !isBuyer && (
-            <div style={styles.card}>
-              <h3 style={styles.sectionTitle}>Depune oferta</h3>
-              <p style={styles.hint}>
-                Oferta ta trebuie sa fie sub <strong>{auction.currentPrice} RON</strong>
-              </p>
-
-              <input
-                style={styles.input} type="number"
-                placeholder={`Sub ${auction.currentPrice} RON`}
-                value={amount} onChange={e => setAmount(e.target.value)}
-              />
-              <textarea
-                style={{ ...styles.input, height: '70px', resize: 'none', marginTop: '8px' }}
-                placeholder="Mesaj optional pentru cumparator..."
-                value={message} onChange={e => setMessage(e.target.value)}
-              />
-
-              {error && <p style={styles.error}>{error}</p>}
-
-              <button style={styles.bidBtn} onClick={placeBid}>
-                Depune oferta
-              </button>
-            </div>
-          )}
-
-          {!isActive && (
-            <div style={{ ...styles.card, textAlign: 'center', background: '#f7f8fa' }}>
-              <p style={{ fontSize: '32px', margin: '0' }}>🔒</p>
-              <p style={{ fontWeight: '600', color: '#1a1a1a' }}>Licitatie inchisa</p>
-              <p style={{ fontSize: '13px', color: '#718096' }}>
-                Pret final: <strong>{auction.currentPrice} RON</strong>
-              </p>
-            </div>
-          )}
-
-          {/* Lista oferte */}
-          <div style={styles.card}>
-            <h3 style={styles.sectionTitle}>
-              Oferte ({bids.length})
-              <span style={{ fontSize: '11px', color: status === 'conectat' ? '#38a169' : '#718096', marginLeft: '8px' }}>
-                ● {status}
-              </span>
-            </h3>
-
-            {bids.length === 0 ? (
-              <p style={{ fontSize: '13px', color: '#a0aec0', textAlign: 'center', padding: '1rem' }}>
-                Fii primul care oferteza!
-              </p>
-            ) : (
-              [...bids]
-                .sort((a, b) => a.amount - b.amount)
-                .map((bid, i) => (
+            {/* Bids */}
+            <div className="card">
+              <h3 className="card-title" style={{ marginBottom: '12px' }}>
+                Oferte ({bids.length})
+                <span style={{ fontSize: '0.6875rem', color: status === 'conectat' ? 'var(--success-green)' : 'var(--text-muted)', marginLeft: '8px', fontWeight: 500 }}>
+                  ● {status}
+                </span>
+              </h3>
+              {bids.length === 0 ? (
+                <div className="empty-state" style={{ padding: '1.5rem' }}>
+                  <div className="empty-state-icon">💰</div>
+                  <p className="empty-state-text">Fii primul care oferteza!</p>
+                </div>
+              ) : (
+                [...bids].sort((a, b) => a.amount - b.amount).map((bid, i) => (
                   <div key={bid._id || i} style={{
-                    ...styles.bidRow,
-                    background: i === 0 ? '#F0FFF4' : '#fff',
-                    borderLeft: i === 0 ? '3px solid #38a169' : '3px solid transparent',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                    padding: '10px 12px', borderRadius: 'var(--radius-md)', marginBottom: '6px',
+                    background: i === 0 ? '#ECFDF5' : 'var(--bg-card)',
+                    borderLeft: `3px solid ${i === 0 ? 'var(--success-green)' : 'transparent'}`,
+                    transition: 'background var(--transition-fast)',
                   }}>
                     <div>
-                      <p style={styles.bidName}>
+                      <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-heading)', margin: 0 }}>
                         {i === 0 && '🏆 '}
-                        <span
-                          style={{ cursor: 'pointer', textDecoration: 'underline', color: '#3182ce' }}
-                          onClick={() => navigate(`/profile/${bid.supplier?._id}`)}
-                        >
+                        <span style={{ cursor: 'pointer', color: 'var(--action-blue)' }} onClick={() => navigate(`/profile/${bid.supplier?._id}`)}>
                           {bid.supplier?.firstName} {bid.supplier?.lastName}
                         </span>
                       </p>
-                      {bid.message && <p style={styles.bidMsg}>{bid.message}</p>}
+                      {bid.message && <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>{bid.message}</p>}
                     </div>
-                    <p style={{ ...styles.bidAmount, color: i === 0 ? '#38a169' : '#e53e3e' }}>
+                    <p style={{ fontSize: '1rem', fontWeight: 700, margin: 0, whiteSpace: 'nowrap', color: i === 0 ? 'var(--success-green)' : 'var(--bid-teal)' }}>
                       {bid.amount} RON
                     </p>
                   </div>
                 ))
-            )}
+              )}
+            </div>
           </div>
-
         </div>
       </div>
+
+      <style>{`
+        .ad-layout { display: grid; grid-template-columns: 1fr 360px; gap: 1.25rem; align-items: start; }
+        .ad-left { display: flex; flex-direction: column; gap: 1.25rem; }
+        .ad-right { display: flex; flex-direction: column; gap: 1.25rem; }
+        .ad-images { display: flex; gap: 8px; flex-wrap: wrap; }
+        .ad-main-img { width: 100%; max-height: 320px; object-fit: cover; border-radius: var(--radius-lg); }
+        .ad-thumb-img { width: 80px; height: 80px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border); cursor: pointer; }
+        .ad-thumb-img:hover { border-color: var(--bid-teal); }
+        @media (max-width: 900px) {
+          .ad-layout { grid-template-columns: 1fr; }
+        }
+      `}</style>
     </div>
   );
 }
-
-const statusColor = s => ({ active: '#38a169', closed: '#718096', cancelled: '#e53e3e', draft: '#d69e2e' }[s] || '#718096');
-
-const styles = {
-  page:         { maxWidth: '1100px', margin: '0 auto', padding: '2rem' },
-  topBar:       { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' },
-  backBtn:      { background: 'none', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', fontSize: '13px', color: '#718096' },
-  statusBadge:  { fontSize: '12px', color: '#fff', padding: '4px 12px', borderRadius: '20px' },
-  layout:       { display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px', alignItems: 'start' },
-  left:         { display: 'flex', flexDirection: 'column', gap: '16px' },
-  right:        { display: 'flex', flexDirection: 'column', gap: '16px' },
-  images:       { display: 'flex', gap: '8px', flexWrap: 'wrap' },
-  mainImg:      { width: '100%', maxHeight: '300px', objectFit: 'cover', borderRadius: '10px' },
-  thumbImg:     { width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' },
-  card:         { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '1.25rem' },
-  categoryRow:  { display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' },
-  category:     { fontSize: '11px', background: '#EBF8FF', color: '#2B6CB0', padding: '2px 8px', borderRadius: '20px' },
-  tag:          { fontSize: '11px', background: '#F7FAFC', color: '#718096', padding: '2px 8px', borderRadius: '20px', border: '1px solid #e2e8f0' },
-  title:        { fontSize: '20px', fontWeight: '700', margin: '0 0 8px', color: '#1a1a1a' },
-  description:  { fontSize: '14px', color: '#4a5568', lineHeight: '1.6', marginBottom: '12px' },
-  location:     { fontSize: '13px', color: '#718096', marginBottom: '12px' },
-  priceBox:     { display: 'flex', justifyContent: 'space-between', background: '#F7FAFC', borderRadius: '8px', padding: '12px 16px', marginBottom: '10px' },
-  priceLabel:   { fontSize: '11px', color: '#718096', margin: '0' },
-  currentPrice: { fontSize: '24px', fontWeight: '700', color: '#e53e3e', margin: '0' },
-  targetPrice:  { fontSize: '20px', fontWeight: '600', color: '#718096', margin: '0' },
-  deadline:     { fontSize: '13px', color: '#d69e2e', marginBottom: '4px', textAlign: 'center' },
-  timerSeg:     { display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#F7FAFC', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', minWidth: '48px' },
-  timerVal:     { fontSize: '20px', fontWeight: '600', color: '#1a1a1a', lineHeight: '1' },
-  timerLbl:     { fontSize: '10px', color: '#718096', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.04em' },
-  timerSep:     { fontSize: '18px', color: '#718096', fontWeight: '600', marginBottom: '14px' },
-  buyer:        { fontSize: '13px', color: '#718096' },
-  sectionTitle: { fontSize: '15px', fontWeight: '600', color: '#1a1a1a', marginBottom: '12px', marginTop: '0' },
-  hint:         { fontSize: '13px', color: '#718096', marginBottom: '10px' },
-  input:        { width: '100%', padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' },
-  error:        { color: '#e53e3e', fontSize: '13px', marginTop: '6px' },
-  bidBtn:       { width: '100%', padding: '10px', background: '#1a1a1a', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', marginTop: '10px' },
-  bidRow:       { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '8px', marginBottom: '6px' },
-  bidName:      { fontSize: '13px', fontWeight: '600', color: '#1a1a1a', margin: '0' },
-  bidMsg:       { fontSize: '12px', color: '#718096', margin: '2px 0 0' },
-  bidAmount:    { fontSize: '16px', fontWeight: '700', margin: '0', whiteSpace: 'nowrap' },
-};

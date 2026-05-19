@@ -7,14 +7,12 @@ export default function PublicProfile() {
   const { id }          = useParams();
   const { user, token } = useAuth();
   const navigate        = useNavigate();
-
-  const [profile,  setProfile]  = useState(null);
-  const [stats,    setStats]    = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [stats, setStats] = useState(null);
   const [auctions, setAuctions] = useState([]);
-  const [loading,  setLoading]  = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Daca e propriul profil, redirecteaza la settings
     if (id === user?.id) { navigate('/settings'); return; }
     fetchProfile();
   }, [id]);
@@ -26,103 +24,88 @@ export default function PublicProfile() {
         fetch(`${API_URL}/api/auth/profile/${id}/stats`),
         fetch(`${API_URL}/api/auctions?buyerId=${id}&status=active`),
       ]);
-      const [prof, st, auct] = await Promise.all([
-        profRes.json(), statsRes.json(), auctRes.json()
-      ]);
-      setProfile(prof);
-      setStats(st);
+      const [prof, st, auct] = await Promise.all([profRes.json(), statsRes.json(), auctRes.json()]);
+      setProfile(prof); setStats(st);
       setAuctions(Array.isArray(auct) ? auct.filter(a => a.buyer?._id === id || a.buyer === id) : []);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  const handleMessage = () => {
-    navigate(`/messages?to=${id}&name=${profile.firstName} ${profile.lastName}`);
-  };
+  const handleMessage = () => { navigate(`/messages?to=${id}&name=${profile.firstName} ${profile.lastName}`); };
 
-  if (loading) return <p style={{ textAlign: 'center', padding: '3rem', color: '#718096' }}>Se incarca...</p>;
-  if (!profile) return <p style={{ textAlign: 'center', padding: '3rem', color: '#718096' }}>Profil negasit.</p>;
+  if (loading) return <p className="loading-text">Se incarca...</p>;
+  if (!profile) return <div className="empty-state"><div className="empty-state-icon">❌</div><p className="empty-state-title">Profil negasit.</p></div>;
 
   const joinDate = new Date(profile.createdAt).toLocaleDateString('ro-RO', { month: 'long', year: 'numeric' });
 
   return (
-    <div style={styles.page}>
-      <div style={styles.container}>
+    <div className="page">
+      <div className="container-sm" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-        {/* Header profil */}
-        <div style={styles.profileCard}>
-          <div style={styles.profileTop}>
+        <div className="card">
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
             {profile.avatar ? (
-              <img src={profile.avatar} alt="" style={styles.avatar} />
+              <img src={profile.avatar} alt="" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '3px solid var(--soft-aqua)' }} />
             ) : (
-              <div style={styles.avatarFallback}>
+              <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--primary-navy)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 700, flexShrink: 0, border: '3px solid var(--soft-aqua)' }}>
                 {profile.firstName?.[0]}{profile.lastName?.[0]}
               </div>
             )}
-            <div style={styles.profileInfo}>
-              <h1 style={styles.name}>
-                {profile.firstName} {profile.lastName}
-              </h1>
-              {profile.companyName && (
-                <p style={styles.company}>{profile.companyName}</p>
-              )}
-              <div style={styles.metaRow}>
-                <span style={{ ...styles.roleBadge, background: profile.role === 'buyer' ? '#EBF8FF' : '#F0FFF4', color: profile.role === 'buyer' ? '#2B6CB0' : '#276749' }}>
+            <div style={{ flex: 1 }}>
+              <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 4px' }}>{profile.firstName} {profile.lastName}</h1>
+              {profile.companyName && <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: '0 0 8px' }}>{profile.companyName}</p>}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '6px' }}>
+                <span className={`badge ${profile.role === 'buyer' ? 'badge-blue' : 'badge-teal'}`}>
                   {profile.role === 'buyer' ? 'Cumparator' : 'Furnizor'}
                 </span>
-                {profile.city && (
-                  <span style={styles.meta}>📍 {profile.city}</span>
-                )}
-                <span style={styles.meta}>📅 Membru din {joinDate}</span>
+                {profile.city && <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>📍 {profile.city}</span>}
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>📅 Membru din {joinDate}</span>
               </div>
               {profile.rating > 0 && (
-                <div style={styles.ratingRow}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.875rem' }}>
                   {'⭐'.repeat(Math.round(profile.rating))}
-                  <span style={styles.ratingText}>{profile.rating.toFixed(1)} ({profile.reviewCount} recenzii)</span>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>{profile.rating.toFixed(1)} ({profile.reviewCount} recenzii)</span>
                 </div>
               )}
             </div>
-
-            {/* Buton mesaj */}
             {user?.id !== id && (
-              <button style={styles.msgBtn} onClick={handleMessage}>
-                ✉️ Trimite mesaj
-              </button>
+              <button className="btn btn-primary" onClick={handleMessage}>✉️ Trimite mesaj</button>
             )}
           </div>
 
-          {/* Stats */}
           {stats && (
-            <div style={styles.statsRow}>
+            <div style={{ display: 'flex', borderTop: '1px solid var(--border-light)', paddingTop: '1rem', gap: '1rem' }}>
               {profile.role === 'buyer' ? (
-                <StatItem value={stats.auctionsCount} label="Licitatii create" />
-              ) : (
-                <>
-                  <StatItem value={stats.bidsCount}  label="Oferte depuse" />
-                  <StatItem value={stats.wonCount}   label="Licitatii castigate" />
-                </>
-              )}
+                <div style={{ textAlign: 'center', flex: 1 }}>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--bid-teal)' }}>{stats.auctionsCount}</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>Licitatii create</p>
+                </div>
+              ) : (<>
+                <div style={{ textAlign: 'center', flex: 1 }}>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--action-blue)' }}>{stats.bidsCount}</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>Oferte depuse</p>
+                </div>
+                <div style={{ textAlign: 'center', flex: 1 }}>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--success-green)' }}>{stats.wonCount}</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>Licitatii castigate</p>
+                </div>
+              </>)}
             </div>
           )}
         </div>
 
-        {/* Licitatii active (doar pentru buyers) */}
         {profile.role === 'buyer' && auctions.length > 0 && (
-          <div style={styles.card}>
-            <h2 style={styles.sectionTitle}>Licitatii active</h2>
-            <div style={styles.auctionList}>
+          <div className="card">
+            <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 1rem', color: 'var(--text-heading)' }}>Licitatii active</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {auctions.map(a => (
-                <div key={a._id} style={styles.auctionRow}
-                  onClick={() => navigate(`/auction/${a._id}`)}>
-                  {a.images?.[0] && (
-                    <img src={a.images[0].url} alt="" style={styles.auctionThumb} />
-                  )}
-                  <div style={styles.auctionInfo}>
-                    <p style={styles.auctionTitle}>{a.title}</p>
-                    <p style={styles.auctionMeta}>{a.category} · {a.currentPrice} RON</p>
+                <div key={a._id} className="card-hover" onClick={() => navigate(`/auction/${a._id}`)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: 'var(--radius-md)', cursor: 'pointer', border: '1px solid var(--border)', transition: 'all var(--transition-fast)' }}>
+                  {a.images?.[0] && <img src={a.images[0].url} alt="" style={{ width: 48, height: 48, borderRadius: 'var(--radius-sm)', objectFit: 'cover', flexShrink: 0 }} />}
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: '0.875rem', fontWeight: 500, margin: '0 0 2px', color: 'var(--text-heading)' }}>{a.title}</p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>{a.category} · <span style={{ color: 'var(--bid-teal)', fontWeight: 600 }}>{a.currentPrice} RON</span></p>
                   </div>
-                  <span style={styles.auctionArrow}>→</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>→</span>
                 </div>
               ))}
             </div>
@@ -132,40 +115,3 @@ export default function PublicProfile() {
     </div>
   );
 }
-
-function StatItem({ value, label }) {
-  return (
-    <div style={{ textAlign: 'center', flex: 1 }}>
-      <p style={{ fontSize: '24px', fontWeight: '700', margin: '0', color: '#1a1a1a' }}>{value}</p>
-      <p style={{ fontSize: '12px', color: '#718096', margin: '4px 0 0' }}>{label}</p>
-    </div>
-  );
-}
-
-const styles = {
-  page:          { minHeight: '100vh', background: '#f7f8fa', padding: '2rem' },
-  container:     { maxWidth: '680px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' },
-  profileCard:   { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.5rem' },
-  profileTop:    { display: 'flex', gap: '1rem', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap' },
-  avatar:        { width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 },
-  avatarFallback:{ width: '80px', height: '80px', borderRadius: '50%', background: '#1a1a1a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: '600', flexShrink: 0 },
-  profileInfo:   { flex: 1 },
-  name:          { fontSize: '20px', fontWeight: '700', margin: '0 0 4px' },
-  company:       { fontSize: '14px', color: '#718096', margin: '0 0 8px' },
-  metaRow:       { display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '6px' },
-  roleBadge:     { fontSize: '12px', padding: '2px 10px', borderRadius: '20px', fontWeight: '500' },
-  meta:          { fontSize: '13px', color: '#718096' },
-  ratingRow:     { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' },
-  ratingText:    { fontSize: '13px', color: '#718096' },
-  msgBtn:        { padding: '8px 16px', background: '#1a1a1a', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' },
-  statsRow:      { display: 'flex', borderTop: '1px solid #e2e8f0', paddingTop: '1rem', gap: '1rem' },
-  card:          { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.5rem' },
-  sectionTitle:  { fontSize: '16px', fontWeight: '600', margin: '0 0 1rem' },
-  auctionList:   { display: 'flex', flexDirection: 'column', gap: '8px' },
-  auctionRow:    { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', borderRadius: '8px', cursor: 'pointer', border: '1px solid #e2e8f0', transition: 'background .15s' },
-  auctionThumb:  { width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 },
-  auctionInfo:   { flex: 1 },
-  auctionTitle:  { fontSize: '14px', fontWeight: '500', margin: '0 0 2px', color: '#1a1a1a' },
-  auctionMeta:   { fontSize: '12px', color: '#718096', margin: '0' },
-  auctionArrow:  { color: '#a0aec0', fontSize: '16px' },
-};

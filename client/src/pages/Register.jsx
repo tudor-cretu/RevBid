@@ -4,114 +4,127 @@ import { API_URL } from '../config';
 
 export default function Register() {
   const navigate = useNavigate();
-
-  const [form, setForm] = useState({
-    firstName: '', lastName: '', email: '',
-    password: '', role: 'buyer', companyName: '',
-  });
-  const [error,   setError]   = useState('');
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '', role: 'buyer', companyName: '' });
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleChange = e =>
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = e => setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
   const handleSubmit = async e => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
+    e.preventDefault(); setError(''); setLoading(true);
     try {
-      const res  = await fetch(`${API_URL}/api/auth/register`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(form),
-      });
+      const res = await fetch(`${API_URL}/api/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       const data = await res.json();
-
       if (!res.ok) { setError(data.message); return; }
-
-      // Redirecteaza spre verificare cu emailul in state
       navigate('/verify-email', { state: { email: form.email } });
-
-    } catch {
-      setError('Eroare de conexiune la server');
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError('Eroare de conexiune la server'); } finally { setLoading(false); }
   };
 
-  const handleGoogle = () => {
-    window.location.href = `${API_URL}/api/auth/google`;
-  };
+  const handleGoogle = () => { window.location.href = `${API_URL}/api/auth/google`; };
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>RevBid</h1>
-        <p style={styles.subtitle}>Creare cont</p>
-
-        {/* Buton Google */}
-        <button style={styles.googleBtn} onClick={handleGoogle}>
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-               alt="Google" width="18" style={{ marginRight: '8px' }} />
-          Continua cu Google
-        </button>
-
-        <div style={styles.divider}>
-          <span style={styles.dividerText}>sau cu email</span>
-        </div>
-
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.row}>
-            <input style={styles.input} name="firstName" placeholder="Prenume"
-              value={form.firstName} onChange={handleChange} required />
-            <input style={styles.input} name="lastName" placeholder="Nume"
-              value={form.lastName} onChange={handleChange} required />
+    <div className="auth-page">
+      <div className="auth-brand">
+        <div className="auth-brand-content">
+          <div className="auth-brand-logo">
+            <span style={{ color: '#fff' }}>Rev</span><span style={{ color: 'var(--bid-teal)' }}>Bid</span>
           </div>
-
-          <input style={styles.input} type="email" name="email" placeholder="Email"
-            value={form.email} onChange={handleChange} required />
-
-          <input style={styles.input} type="password" name="password" placeholder="Parola"
-            value={form.password} onChange={handleChange} required />
-
-          <select style={styles.input} name="role" value={form.role} onChange={handleChange}>
-            <option value="buyer">Cumparator</option>
-            <option value="supplier">Furnizor</option>
-          </select>
-
-          {form.role === 'supplier' && (
-            <input style={styles.input} name="companyName" placeholder="Nume companie"
-              value={form.companyName} onChange={handleChange} />
-          )}
-
-          {error && <p style={styles.error}>{error}</p>}
-
-          <button style={styles.button} type="submit" disabled={loading}>
-            {loading ? 'Se incarca...' : 'Creeaza cont'}
-          </button>
-        </form>
-
-        <p style={styles.link}>
-          Ai deja cont? <Link to="/login">Autentifica-te</Link>
-        </p>
+          <h1 className="auth-brand-title">Incepe sa economisesti astazi</h1>
+          <p className="auth-brand-desc">Creeaza un cont gratuit si acceseaza piata de licitatii inverse. Fie ca esti cumparator sau furnizor, RevBid te ajuta sa obtii cele mai bune oferte.</p>
+          <div className="auth-brand-features">
+            <div className="auth-brand-feature"><span className="auth-feature-icon">🆓</span><span>Cont gratuit</span></div>
+            <div className="auth-brand-feature"><span className="auth-feature-icon">🔒</span><span>Date securizate</span></div>
+            <div className="auth-brand-feature"><span className="auth-feature-icon">🚀</span><span>Activ in 2 minute</span></div>
+          </div>
+        </div>
       </div>
+
+      <div className="auth-form-side">
+        <div className="auth-card">
+          <h2 className="auth-title">Creeare cont</h2>
+          <p className="auth-subtitle">Completeaza datele pentru a incepe.</p>
+
+          <button className="auth-google-btn" onClick={handleGoogle}>
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="18" />
+            Continua cu Google
+          </button>
+
+          <div className="auth-divider"><span>sau cu email</span></div>
+
+          <form onSubmit={handleSubmit} className="auth-form">
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Prenume</label>
+                <input className="form-input" name="firstName" placeholder="Ion" value={form.firstName} onChange={handleChange} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Nume</label>
+                <input className="form-input" name="lastName" placeholder="Popescu" value={form.lastName} onChange={handleChange} required />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input className="form-input" type="email" name="email" placeholder="exemplu@email.com" value={form.email} onChange={handleChange} required />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Parola</label>
+              <input className="form-input" type="password" name="password" placeholder="Minim 6 caractere" value={form.password} onChange={handleChange} required />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Tip cont</label>
+              <div className="role-selector">
+                <button type="button" className={`role-option ${form.role === 'buyer' ? 'active' : ''}`} onClick={() => setForm(prev => ({ ...prev, role: 'buyer' }))}>
+                  <span className="role-icon">🛒</span>
+                  <span className="role-name">Cumparator</span>
+                  <span className="role-desc">Postez licitatii</span>
+                </button>
+                <button type="button" className={`role-option ${form.role === 'supplier' ? 'active' : ''}`} onClick={() => setForm(prev => ({ ...prev, role: 'supplier' }))}>
+                  <span className="role-icon">🏢</span>
+                  <span className="role-name">Furnizor</span>
+                  <span className="role-desc">Depun oferte</span>
+                </button>
+              </div>
+            </div>
+
+            {form.role === 'supplier' && (
+              <div className="form-group">
+                <label className="form-label">Nume companie</label>
+                <input className="form-input" name="companyName" placeholder="SC Exemplu SRL" value={form.companyName} onChange={handleChange} />
+              </div>
+            )}
+
+            {error && <div className="alert alert-error">{error}</div>}
+
+            <button className="btn btn-primary btn-block btn-lg" type="submit" disabled={loading}>
+              {loading ? 'Se creeaza...' : 'Creeaza cont'}
+            </button>
+          </form>
+
+          <p className="auth-footer-text">
+            Ai deja cont? <Link to="/login">Autentifica-te</Link>
+          </p>
+        </div>
+      </div>
+
+      <style>{regCSS}</style>
     </div>
   );
 }
 
-const styles = {
-  page:        { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f5f5f5' },
-  card:        { background: '#fff', padding: '2rem', borderRadius: '8px', width: '100%', maxWidth: '400px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' },
-  title:       { fontSize: '24px', fontWeight: '600', marginBottom: '4px' },
-  subtitle:    { color: '#666', marginBottom: '1.5rem', fontSize: '14px' },
-  googleBtn:   { width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', fontWeight: '500' },
-  divider:     { position: 'relative', textAlign: 'center', margin: '16px 0', borderTop: '1px solid #e2e8f0' },
-  dividerText: { position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: '#fff', padding: '0 12px', fontSize: '12px', color: '#a0aec0' },
-  form:        { display: 'flex', flexDirection: 'column', gap: '12px' },
-  row:         { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' },
-  input:       { padding: '10px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', width: '100%', boxSizing: 'border-box' },
-  button:      { padding: '10px', background: '#1a1a1a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' },
-  error:       { color: '#e53e3e', fontSize: '13px' },
-  link:        { marginTop: '1rem', fontSize: '13px', textAlign: 'center', color: '#666' },
-};
+const regCSS = `
+.role-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.role-option {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 14px 12px; border: 2px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--bg-card); cursor: pointer; transition: all var(--transition-fast);
+  font-family: var(--font-sans);
+}
+.role-option:hover { border-color: var(--action-blue); background: var(--ice-blue); }
+.role-option.active { border-color: var(--bid-teal); background: var(--soft-aqua); }
+.role-icon { font-size: 1.5rem; }
+.role-name { font-size: 0.875rem; font-weight: 600; color: var(--text-heading); }
+.role-desc { font-size: 0.75rem; color: var(--text-muted); }
+`;

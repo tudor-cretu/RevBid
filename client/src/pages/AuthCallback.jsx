@@ -11,27 +11,19 @@ export default function AuthCallback() {
   useEffect(() => {
     const token = params.get('token');
     const error = params.get('error');
-
-    if (error || !token) {
-      navigate('/login?error=google');
-      return;
-    }
-
-    // Fetch datele userului cu tokenul primit
-    fetch(`${API_URL}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    if (error || !token) { navigate('/login?error=google'); return; }
+    fetch(`${API_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(user => {
-        login(user, token);
-        navigate('/dashboard');
-      })
+      .then(user => { login(user, token); navigate('/dashboard'); })
       .catch(() => navigate('/login'));
   }, []);
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-      <p style={{ color: '#718096' }}>Se autentifica cu Google...</p>
+    <div className="page-center" style={{ background: 'var(--bg-page)' }}>
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+        <div className="spinner" style={{ width: '40px', height: '40px' }} />
+        <p style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Se autentifica cu Google...</p>
+      </div>
     </div>
   );
 }

@@ -6,11 +6,7 @@ import markerIcon   from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
 delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl:       markerIcon,
-  shadowUrl:     markerShadow,
-});
+L.Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow });
 
 export default function MapView({ location }) {
   if (!location?.lat || !location?.lng) return null;
@@ -20,20 +16,12 @@ export default function MapView({ location }) {
       <MapContainer
         center={[location.lat, location.lng]}
         zoom={13}
-        style={{ height: '200px', width: '100%', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-        scrollWheelZoom={false}
-        dragging={false}
-        zoomControl={false}
-        doubleClickZoom={false}
+        style={{ height: '200px', width: '100%', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}
+        scrollWheelZoom={false} dragging={false} zoomControl={false} doubleClickZoom={false}
       >
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='© <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
-        />
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='© <a href="https://www.openstreetmap.org/">OpenStreetMap</a>' />
         <Marker position={[location.lat, location.lng]}>
-          {location.address && (
-            <Popup>{location.address}</Popup>
-          )}
+          {location.address && <Popup>{location.address}</Popup>}
         </Marker>
       </MapContainer>
     </div>

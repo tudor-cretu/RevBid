@@ -9,28 +9,40 @@ export default function AuctionChatBox({ auctionId, socket }) {
   const [messages, setMessages] = useState([]);
   const [input,    setInput]    = useState('');
   const [error,    setError]    = useState('');
-  const endRef = useRef(null);
+  const [sending,  setSending]  = useState(false);
+  const endRef     = useRef(null);
+  // Keep a ref to the latest socket so the effect closure stays fresh
+  const socketRef  = useRef(socket);
 
+  useEffect(() => { socketRef.current = socket; }, [socket]);
+
+  // Load history whenever auctionId changes
   useEffect(() => {
     fetchHistory();
+  }, [auctionId]);
 
-    if (socket) {
-      socket.on('auction_chat', (msg) => {
-        setMessages(prev => [...prev, msg]);
-      });
-    }
-
-    return () => socket?.off('auction_chat');
-  }, [auctionId, socket]);
-
+  // Attach / detach the socket listener whenever the socket instance changes
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (!socket) return;
+
+    const handleChat = (msg) => {
+      setMessages(prev => {
+        // Deduplicate by _id to avoid double-adds when sender also gets own echo
+        if (msg._id && prev.some(m => m._id === msg._id)) return prev;
+        return [...prev, msg];
+      });
+    };
+
+    socket.on('auction_chat', handleChat);
+    return () => socket.off('auction_chat', handleChat);
+  }, [socket]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const fetchHistory = async () => {
     try {
       const res  = await fetch(`${API_URL}/api/auctions/${auctionId}/chat`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       setMessages(Array.isArray(data) ? data : []);
@@ -38,80 +50,91 @@ export default function AuctionChatBox({ auctionId, socket }) {
   };
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
-    const content = input.trim();
+    if (!input.trim() || sending) return;
     setError('');
+    setSending(true);
+    const content = input.trim();
+    setInput(''); // Clear immediately for UX
 
-    const res  = await fetch(`${API_URL}/api/auctions/${auctionId}/chat`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body:    JSON.stringify({ content }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.message);
-      return;
+    try {
+      const res  = await fetch(`${API_URL}/api/auctions/${auctionId}/chat`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ content }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message);
+        setInput(content); // Restore if failed
+        return;
+      }
+      // Add own message immediately (the server broadcasts to OTHERS via socket,
+      // but we get the persisted message back from the REST response — add it locally)
+      setMessages(prev => {
+        if (data._id && prev.some(m => m._id === data._id)) return prev;
+        return [...prev, data];
+      });
+    } catch (err) {
+      setError('Eroare de conexiune');
+      setInput(content);
+    } finally {
+      setSending(false);
     }
-
-    setInput('');
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  const roleColor = r => ({ buyer: '#2B6CB0', supplier: '#276749', admin: '#805ad5' }[r] || '#718096');
-  const roleBg    = r => ({ buyer: '#EBF8FF', supplier: '#F0FFF4', admin: '#FAF5FF' }[r] || '#F7FAFC');
+  const roleBadge = r => ({
+    buyer:    'badge-blue',
+    supplier: 'badge-teal',
+    admin:    'badge-navy',
+  }[r] || 'badge-gray');
 
   return (
-    <div style={styles.wrap}>
-      <h3 style={styles.title}>Chat licitatie</h3>
-      <p style={styles.hint}>Cumparatorul si furnizorii care au ofertat pot comunica aici</p>
+    <div className="card chat-box">
+      <div className="card-header">
+        <h3 className="card-title">💬 Chat licitatie</h3>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          Cumparatorul si furnizorii care au ofertat pot comunica aici
+        </span>
+      </div>
 
-      {/* Mesaje */}
-      <div style={styles.messages}>
+      <div className="chat-messages">
         {messages.length === 0 ? (
-          <p style={styles.empty}>Niciun mesaj inca. Fii primul!</p>
+          <div className="empty-state" style={{ padding: '2rem' }}>
+            <div className="empty-state-icon">💬</div>
+            <p className="empty-state-text">Niciun mesaj inca. Fii primul!</p>
+          </div>
         ) : (
           messages.map((msg, i) => {
-            const isMine = msg.sender?._id === user?.id || msg.sender === user?.id;
+            const senderId = msg.sender?._id ?? msg.sender;
+            const isMine   = senderId === user?.id;
             return (
-              <div key={msg._id || i} style={{ ...styles.msgRow, flexDirection: isMine ? 'row-reverse' : 'row' }}>
-                {/* Avatar */}
-                <div style={{ flexShrink: 0, cursor: 'pointer' }}
-                     onClick={() => navigate(`/profile/${msg.sender?._id}`)}>
+              <div key={msg._id || i} className={`chat-msg-row ${isMine ? 'mine' : ''}`}>
+                <div className="chat-msg-avatar" onClick={() => navigate(`/profile/${msg.sender?._id ?? msg.sender}`)}>
                   {msg.sender?.avatar ? (
-                    <img src={msg.sender.avatar} alt="" style={styles.avatar} />
+                    <img src={msg.sender.avatar} alt="" className="chat-avatar-img" />
                   ) : (
-                    <div style={styles.avatarFallback}>
+                    <div className="chat-avatar-fallback">
                       {msg.sender?.firstName?.[0]}{msg.sender?.lastName?.[0]}
                     </div>
                   )}
                 </div>
-
-                {/* Bubble */}
-                <div style={{ maxWidth: '70%' }}>
-                  {/* Nume + rol */}
-                  <div style={{ ...styles.senderRow, justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
+                <div className="chat-msg-content">
+                  <div className={`chat-msg-sender ${isMine ? 'mine' : ''}`}>
                     <span
-                      style={styles.senderName}
-                      onClick={() => navigate(`/profile/${msg.sender?._id}`)}
+                      className="chat-sender-name"
+                      onClick={() => navigate(`/profile/${msg.sender?._id ?? msg.sender}`)}
                     >
                       {msg.sender?.firstName} {msg.sender?.lastName}
                     </span>
-                    <span style={{ ...styles.roleTag, background: roleBg(msg.sender?.role), color: roleColor(msg.sender?.role) }}>
-                      {msg.sender?.role}
-                    </span>
+                    <span className={`badge ${roleBadge(msg.sender?.role)}`}>{msg.sender?.role}</span>
                   </div>
-
-                  <div style={{ ...styles.bubble, ...(isMine ? styles.bubbleMine : styles.bubbleTheirs) }}>
-                    <p style={styles.msgText}>{msg.content}</p>
-                    <p style={styles.msgTime}>
+                  <div className={`chat-bubble ${isMine ? 'mine' : ''}`}>
+                    <p className="chat-msg-text">{msg.content}</p>
+                    <p className="chat-msg-time">
                       {new Date(msg.createdAt).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
@@ -123,48 +146,52 @@ export default function AuctionChatBox({ auctionId, socket }) {
         <div ref={endRef} />
       </div>
 
-      {/* Eroare */}
-      {error && (
-        <div style={styles.errorBox}>
-          ⚠️ {error}
-        </div>
-      )}
+      {error && <div className="alert alert-error" style={{ margin: '8px 0 0' }}>⚠️ {error}</div>}
 
-      {/* Input */}
-      <div style={styles.inputRow}>
+      <div className="chat-input-row">
         <textarea
-          style={styles.input}
+          className="form-input"
           placeholder="Scrie un mesaj... (Enter pentru trimite)"
           value={input}
           onChange={e => { setInput(e.target.value); setError(''); }}
           onKeyDown={handleKeyDown}
           rows={1}
+          style={{ resize: 'none', flex: 1 }}
+          disabled={sending}
         />
-        <button style={styles.sendBtn} onClick={sendMessage}>➤</button>
+        <button className="btn btn-primary btn-sm" onClick={sendMessage} disabled={sending || !input.trim()}>
+          {sending ? (
+            <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          )}
+        </button>
       </div>
+
+      <style>{chatCSS}</style>
     </div>
   );
 }
 
-const styles = {
-  wrap:          { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '10px' },
-  title:         { fontSize: '15px', fontWeight: '600', color: '#1a1a1a', margin: '0' },
-  hint:          { fontSize: '12px', color: '#a0aec0', margin: '0' },
-  messages:      { height: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px 0' },
-  empty:         { textAlign: 'center', color: '#a0aec0', fontSize: '13px', margin: 'auto' },
-  msgRow:        { display: 'flex', gap: '8px', alignItems: 'flex-start' },
-  avatar:        { width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' },
-  avatarFallback:{ width: '32px', height: '32px', borderRadius: '50%', background: '#1a1a1a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '600' },
-  senderRow:     { display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' },
-  senderName:    { fontSize: '12px', fontWeight: '600', color: '#3182ce', cursor: 'pointer' },
-  roleTag:       { fontSize: '10px', padding: '1px 6px', borderRadius: '20px' },
-  bubble:        { padding: '8px 12px', borderRadius: '12px', display: 'inline-block', maxWidth: '100%' },
-  bubbleMine:    { background: '#1a1a1a', color: '#fff', borderBottomRightRadius: '4px' },
-  bubbleTheirs:  { background: '#f0f0f0', color: '#1a1a1a', borderBottomLeftRadius: '4px' },
-  msgText:       { fontSize: '13px', margin: '0 0 2px', lineHeight: '1.4', wordBreak: 'break-word' },
-  msgTime:       { fontSize: '10px', opacity: 0.5, margin: '0' },
-  errorBox:      { background: '#FFF5F5', border: '1px solid #FED7D7', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', color: '#C53030' },
-  inputRow:      { display: 'flex', gap: '8px', borderTop: '1px solid #e2e8f0', paddingTop: '10px' },
-  input:         { flex: 1, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', resize: 'none', fontFamily: 'inherit' },
-  sendBtn:       { padding: '8px 14px', background: '#1a1a1a', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' },
-};
+const chatCSS = `
+.chat-box .card-header { flex-direction: column; align-items: flex-start; gap: 2px; }
+.chat-messages { height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 12px 0; }
+.chat-msg-row { display: flex; gap: 8px; align-items: flex-start; }
+.chat-msg-row.mine { flex-direction: row-reverse; }
+.chat-msg-avatar { flex-shrink: 0; cursor: pointer; }
+.chat-avatar-img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+.chat-avatar-fallback { width: 32px; height: 32px; border-radius: 50%; background: var(--primary-navy); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+.chat-msg-content { max-width: 70%; }
+.chat-msg-sender { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.chat-msg-sender.mine { justify-content: flex-end; }
+.chat-sender-name { font-size: 12px; font-weight: 600; color: var(--action-blue); cursor: pointer; }
+.chat-sender-name:hover { text-decoration: underline; }
+.chat-bubble { padding: 8px 14px; border-radius: 12px; display: inline-block; background: var(--ice-blue); color: var(--text-body); border-bottom-left-radius: 4px; }
+.chat-bubble.mine { background: var(--deep-blue); color: #fff; border-bottom-left-radius: 12px; border-bottom-right-radius: 4px; }
+.chat-msg-text { font-size: 13px; margin: 0 0 2px; line-height: 1.4; word-break: break-word; }
+.chat-msg-time { font-size: 10px; opacity: 0.6; margin: 0; }
+.chat-input-row { display: flex; gap: 8px; border-top: 1px solid var(--border-light); padding-top: 12px; align-items: flex-end; }
+`;

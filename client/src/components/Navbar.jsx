@@ -10,32 +10,23 @@ export default function Navbar() {
 
   const [notifications, setNotifications] = useState([]);
   const [showDropdown,  setShowDropdown]  = useState(false);
+  const [mobileOpen,    setMobileOpen]    = useState(false);
   const socketRef   = useRef(null);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
     if (!user || !token) return;
-
     const s = io(API_URL, { auth: { token } });
-
-    s.on('connect', () => {
-      console.log('Navbar socket conectat');
-    });
-
-    // Toate notificarile personale vin pe acest event
+    s.on('connect', () => console.log('Navbar socket conectat'));
     s.on('notification', (notif) => {
       setNotifications(prev => [{
-        id:   Date.now() + Math.random(),
-        ...notif,
-        read: false,
+        id: Date.now() + Math.random(), ...notif, read: false,
       }, ...prev].slice(0, 30));
     });
-
     socketRef.current = s;
     return () => s.disconnect();
   }, [user, token]);
 
-  // Inchide dropdown la click afara
   useEffect(() => {
     const handleClick = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -62,10 +53,7 @@ export default function Navbar() {
 
   const clearAll = () => setNotifications([]);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+  const handleLogout = () => { logout(); navigate('/login'); };
 
   const timeAgo = (date) => {
     const diff = Math.floor((new Date() - new Date(date)) / 1000);
@@ -85,55 +73,65 @@ export default function Navbar() {
   if (!user) return null;
 
   return (
-    <nav style={styles.nav}>
-      <div style={styles.inner}>
+    <nav className="rb-nav">
+      <div className="rb-nav-inner">
 
-        <span style={styles.logo} onClick={() => navigate('/dashboard')}>RevBid</span>
+        <div className="rb-nav-brand" onClick={() => navigate('/dashboard')}>
+          <span className="rb-nav-logo-rev">Rev</span>
+          <span className="rb-nav-logo-bid">Bid</span>
+        </div>
 
-        <div style={styles.right}>
+        {/* Hamburger */}
+        <button className="rb-nav-hamburger" onClick={() => setMobileOpen(p => !p)} aria-label="Menu">
+          <span className={`rb-hamburger-line ${mobileOpen ? 'open' : ''}`} />
+          <span className={`rb-hamburger-line ${mobileOpen ? 'open' : ''}`} />
+          <span className={`rb-hamburger-line ${mobileOpen ? 'open' : ''}`} />
+        </button>
+
+        <div className={`rb-nav-right ${mobileOpen ? 'open' : ''}`}>
+          <button className="rb-nav-link" onClick={() => { navigate('/dashboard'); setMobileOpen(false); }}>Dashboard</button>
           {user.role === 'admin' && (
-            <button style={styles.link} onClick={() => navigate('/admin')}>Admin</button>
+            <button className="rb-nav-link" onClick={() => { navigate('/admin'); setMobileOpen(false); }}>Admin</button>
           )}
-          <button style={styles.link} onClick={() => navigate('/support')}>Support</button>
-          <button style={styles.link} onClick={() => navigate('/messages')}>Mesaje</button>
+          <button className="rb-nav-link" onClick={() => { navigate('/support'); setMobileOpen(false); }}>Support</button>
+          <button className="rb-nav-link" onClick={() => { navigate('/messages'); setMobileOpen(false); }}>Mesaje</button>
 
-          {/* Clopotel notificari */}
-          <div style={{ position: 'relative' }} ref={dropdownRef}>
-            <button style={styles.bellBtn} onClick={handleBellClick} title="Notificari">
-              🔔
+          {/* Bell */}
+          <div className="rb-nav-bell-wrap" ref={dropdownRef}>
+            <button className="rb-nav-bell" onClick={handleBellClick} title="Notificari">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
               {unreadCount > 0 && (
-                <span style={styles.badge}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+                <span className="rb-nav-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
               )}
             </button>
 
             {showDropdown && (
-              <div style={styles.dropdown}>
-                <div style={styles.dropdownHeader}>
-                  <span style={styles.dropdownTitle}>Notificari</span>
+              <div className="rb-notif-dropdown">
+                <div className="rb-notif-header">
+                  <span className="rb-notif-title">Notificari</span>
                   {notifications.length > 0 && (
-                    <button style={styles.clearBtn} onClick={clearAll}>Sterge tot</button>
+                    <button className="rb-notif-clear" onClick={clearAll}>Sterge tot</button>
                   )}
                 </div>
-
                 {notifications.length === 0 ? (
-                  <div style={styles.emptyNotif}>
-                    <p style={{ fontSize: '24px', margin: '0' }}>🔕</p>
-                    <p style={{ fontSize: '13px', color: '#a0aec0', margin: '4px 0 0' }}>Nicio notificare</p>
+                  <div className="rb-notif-empty">
+                    <p style={{ fontSize: '24px', margin: 0 }}>🔕</p>
+                    <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '4px 0 0' }}>Nicio notificare</p>
                   </div>
                 ) : (
-                  <div style={styles.notifList}>
+                  <div className="rb-notif-list">
                     {notifications.map(notif => (
                       <div
                         key={notif.id}
-                        style={{ ...styles.notifItem, background: notif.read ? '#fff' : '#EBF8FF' }}
+                        className={`rb-notif-item ${notif.read ? '' : 'unread'}`}
                         onClick={() => handleNotifClick(notif)}
                       >
-                        <span style={styles.notifIcon}>{notifIcon(notif.type)}</span>
-                        <div style={styles.notifBody}>
-                          <p style={styles.notifText}>{notif.text}</p>
-                          <p style={styles.notifTime}>{timeAgo(notif.time)}</p>
+                        <span className="rb-notif-icon">{notifIcon(notif.type)}</span>
+                        <div className="rb-notif-body">
+                          <p className="rb-notif-text">{notif.text}</p>
+                          <p className="rb-notif-time">{timeAgo(notif.time)}</p>
                         </div>
-                        {!notif.read && <div style={styles.unreadDot} />}
+                        {!notif.read && <div className="rb-notif-dot" />}
                       </div>
                     ))}
                   </div>
@@ -142,52 +140,161 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Avatar + nume */}
-          <div style={styles.userInfo}>
+          {/* User */}
+          <div className="rb-nav-user" onClick={() => navigate('/settings')}>
             {user.avatar ? (
-              <img src={user.avatar} alt="" style={styles.avatar} />
+              <img src={user.avatar} alt="" className="rb-nav-avatar" />
             ) : (
-              <div style={styles.avatarFallback}>
+              <div className="rb-nav-avatar-fallback">
                 {user.firstName?.[0]}{user.lastName?.[0]}
               </div>
             )}
-            <span style={styles.userName}>{user.firstName} {user.lastName}</span>
-            <span style={styles.roleBadge}>{user.role}</span>
+            <div className="rb-nav-user-info hide-mobile">
+              <span className="rb-nav-user-name">{user.firstName}</span>
+              <span className="rb-nav-user-role">{user.role}</span>
+            </div>
           </div>
 
-          <button style={styles.iconBtn} onClick={() => navigate('/settings')} title="Setari cont">⚙️</button>
-          <button style={styles.logoutBtn} onClick={handleLogout}>Deconectare</button>
+          <button className="rb-nav-logout" onClick={handleLogout}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span className="hide-mobile">Deconectare</span>
+          </button>
         </div>
       </div>
+
+      <style>{navbarCSS}</style>
     </nav>
   );
 }
 
-const styles = {
-  nav:            { background: '#fff', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 100 },
-  inner:          { maxWidth: '1200px', margin: '0 auto', padding: '0 2rem', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  logo:           { fontSize: '18px', fontWeight: '700', cursor: 'pointer', color: '#1a1a1a' },
-  right:          { display: 'flex', alignItems: 'center', gap: '12px' },
-  link:           { background: 'none', border: 'none', fontSize: '14px', color: '#718096', cursor: 'pointer', padding: '4px 8px' },
-  userInfo:       { display: 'flex', alignItems: 'center', gap: '8px' },
-  avatar:         { width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' },
-  avatarFallback: { width: '30px', height: '30px', borderRadius: '50%', background: '#1a1a1a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '600' },
-  userName:       { fontSize: '14px', color: '#1a1a1a', fontWeight: '500' },
-  roleBadge:      { fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#F7FAFC', color: '#718096', border: '1px solid #e2e8f0' },
-  iconBtn:        { background: 'none', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '4px 8px', cursor: 'pointer', fontSize: '16px' },
-  logoutBtn:      { padding: '6px 14px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontSize: '13px', color: '#e53e3e', fontWeight: '500' },
-  bellBtn:        { position: 'relative', background: 'none', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '4px 8px', cursor: 'pointer', fontSize: '16px' },
-  badge:          { position: 'absolute', top: '-6px', right: '-6px', background: '#e53e3e', color: '#fff', fontSize: '10px', fontWeight: '700', borderRadius: '20px', padding: '1px 5px', minWidth: '16px', textAlign: 'center' },
-  dropdown:       { position: 'absolute', top: '44px', right: '0', width: '320px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden' },
-  dropdownHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #e2e8f0' },
-  dropdownTitle:  { fontSize: '14px', fontWeight: '600', color: '#1a1a1a' },
-  clearBtn:       { fontSize: '12px', color: '#718096', background: 'none', border: 'none', cursor: 'pointer' },
-  emptyNotif:     { padding: '2rem', textAlign: 'center' },
-  notifList:      { maxHeight: '360px', overflowY: 'auto' },
-  notifItem:      { display: 'flex', gap: '10px', padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f0f0f0', alignItems: 'flex-start' },
-  notifIcon:      { fontSize: '18px', flexShrink: 0, marginTop: '1px' },
-  notifBody:      { flex: 1, minWidth: 0 },
-  notifText:      { fontSize: '13px', color: '#1a1a1a', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  notifTime:      { fontSize: '11px', color: '#a0aec0', margin: '0' },
-  unreadDot:      { width: '8px', height: '8px', borderRadius: '50%', background: '#3182ce', flexShrink: 0, marginTop: '4px' },
-};
+const navbarCSS = `
+.rb-nav {
+  background: var(--primary-navy);
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.rb-nav-inner {
+  max-width: 1280px; margin: 0 auto; padding: 0 1.5rem;
+  height: 64px; display: flex; align-items: center; justify-content: space-between;
+}
+.rb-nav-brand {
+  font-size: 1.375rem; font-weight: 800; cursor: pointer;
+  display: flex; align-items: center; gap: 1px; user-select: none;
+}
+.rb-nav-logo-rev { color: #FFFFFF; }
+.rb-nav-logo-bid { color: var(--bid-teal); }
+
+.rb-nav-right {
+  display: flex; align-items: center; gap: 6px;
+}
+.rb-nav-link {
+  background: none; border: none; color: rgba(255,255,255,0.75);
+  font-size: 0.8125rem; font-weight: 500; cursor: pointer; padding: 6px 12px;
+  border-radius: var(--radius-md); transition: all var(--transition-fast);
+  font-family: var(--font-sans);
+}
+.rb-nav-link:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+.rb-nav-bell-wrap { position: relative; }
+.rb-nav-bell {
+  position: relative; background: rgba(255,255,255,0.1); border: none;
+  border-radius: var(--radius-md); padding: 7px 9px; cursor: pointer;
+  color: rgba(255,255,255,0.85); transition: all var(--transition-fast);
+  display: flex; align-items: center;
+}
+.rb-nav-bell:hover { background: rgba(255,255,255,0.18); color: #fff; }
+.rb-nav-bell-badge {
+  position: absolute; top: -4px; right: -4px;
+  background: var(--error-red); color: #fff;
+  font-size: 10px; font-weight: 700; border-radius: 20px;
+  padding: 1px 5px; min-width: 16px; text-align: center;
+  border: 2px solid var(--primary-navy);
+}
+
+.rb-notif-dropdown {
+  position: absolute; top: 44px; right: 0; width: 340px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-xl);
+  overflow: hidden; animation: slideDown .2s ease;
+  z-index: 200;
+}
+.rb-notif-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px; border-bottom: 1px solid var(--border-light);
+}
+.rb-notif-title { font-size: 0.875rem; font-weight: 600; color: var(--text-heading); }
+.rb-notif-clear { font-size: 0.75rem; color: var(--action-blue); background: none; border: none; cursor: pointer; font-family: var(--font-sans); }
+.rb-notif-clear:hover { text-decoration: underline; }
+.rb-notif-empty { padding: 2rem; text-align: center; }
+.rb-notif-list { max-height: 360px; overflow-y: auto; }
+.rb-notif-item {
+  display: flex; gap: 10px; padding: 12px 16px; cursor: pointer;
+  border-bottom: 1px solid var(--border-light); align-items: flex-start;
+  transition: background var(--transition-fast);
+}
+.rb-notif-item:hover { background: var(--ice-blue); }
+.rb-notif-item.unread { background: #F0F9FF; }
+.rb-notif-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.rb-notif-body { flex: 1; min-width: 0; }
+.rb-notif-text { font-size: 13px; color: var(--text-body); margin: 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-notif-time { font-size: 11px; color: var(--text-muted); margin: 0; }
+.rb-notif-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--action-blue); flex-shrink: 0; margin-top: 4px; }
+
+.rb-nav-user {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 4px 8px; border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+.rb-nav-user:hover { background: rgba(255,255,255,0.1); }
+.rb-nav-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.25); }
+.rb-nav-avatar-fallback {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--bid-teal); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700;
+  border: 2px solid rgba(255,255,255,0.25);
+}
+.rb-nav-user-info { display: flex; flex-direction: column; }
+.rb-nav-user-name { font-size: 13px; color: #fff; font-weight: 600; line-height: 1.2; }
+.rb-nav-user-role { font-size: 10px; color: var(--bid-teal); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+
+.rb-nav-logout {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border: 1px solid rgba(255,255,255,0.2);
+  border-radius: var(--radius-md); background: none;
+  color: rgba(255,255,255,0.8); cursor: pointer; font-size: 13px;
+  font-weight: 500; transition: all var(--transition-fast);
+  font-family: var(--font-sans);
+}
+.rb-nav-logout:hover { background: rgba(220,53,69,0.15); border-color: rgba(220,53,69,0.4); color: #ff8a8a; }
+
+/* Hamburger */
+.rb-nav-hamburger {
+  display: none; background: none; border: none; cursor: pointer; padding: 8px;
+  flex-direction: column; gap: 4px;
+}
+.rb-hamburger-line {
+  width: 20px; height: 2px; background: rgba(255,255,255,0.85);
+  border-radius: 2px; transition: all .25s ease;
+}
+.rb-hamburger-line.open:nth-child(1) { transform: rotate(45deg) translate(4px,4px); }
+.rb-hamburger-line.open:nth-child(2) { opacity: 0; }
+.rb-hamburger-line.open:nth-child(3) { transform: rotate(-45deg) translate(4px,-4px); }
+
+@media (max-width: 768px) {
+  .rb-nav-hamburger { display: flex; }
+  .rb-nav-right {
+    display: none; position: absolute; top: 64px; left: 0; right: 0;
+    background: var(--primary-navy); flex-direction: column; padding: 1rem;
+    gap: 4px; border-top: 1px solid rgba(255,255,255,0.1);
+    box-shadow: var(--shadow-lg);
+  }
+  .rb-nav-right.open { display: flex; animation: slideDown .25s ease; }
+  .rb-nav-link { width: 100%; text-align: left; padding: 10px 12px; }
+  .rb-nav-user { width: 100%; padding: 10px 12px; }
+  .rb-nav-logout { width: 100%; justify-content: center; margin-top: 4px; }
+  .rb-nav-bell-wrap { width: 100%; }
+  .rb-nav-bell { width: 100%; justify-content: center; padding: 10px; }
+  .rb-notif-dropdown { width: calc(100vw - 2rem); right: -1rem; }
+}
+`;

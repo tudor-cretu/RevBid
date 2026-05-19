@@ -6,116 +6,154 @@ import { API_URL }   from '../config';
 export default function Login() {
   const { login } = useAuth();
   const navigate  = useNavigate();
-
   const [form,    setForm]    = useState({ email: '', password: '' });
   const [error,   setError]   = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleChange = e =>
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = e => setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
-  const handleGoogle = () => {
-    window.location.href = `${API_URL}/api/auth/google`;
-  };
+  const handleGoogle = () => { window.location.href = `${API_URL}/api/auth/google`; };
 
   const handleSubmit = async e => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
+    setError(''); setLoading(true);
     try {
-      const res  = await fetch(`${API_URL}/api/auth/login`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(form),
-      });
+      const res  = await fetch(`${API_URL}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       const data = await res.json();
-
       if (!res.ok) {
-        // Daca contul nu e verificat, redirecteaza spre verificare
-        if (data.needsVerify) {
-          navigate('/verify-email', { state: { email: form.email } });
-          return;
-        }
-        setError(data.message);
-        return;
+        if (data.needsVerify) { navigate('/verify-email', { state: { email: form.email } }); return; }
+        setError(data.message); return;
       }
-
       login(data.user, data.token);
       navigate('/dashboard');
-    } catch {
-      setError('Eroare de conexiune la server');
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError('Eroare de conexiune la server'); } finally { setLoading(false); }
   };
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>RevBid</h1>
-        <p style={styles.subtitle}>Autentificare</p>
-
-        {/* Buton Google */}
-        <button style={styles.googleBtn} onClick={handleGoogle}>
-          <img
-            src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-            alt="Google" width="18"
-            style={{ marginRight: '8px' }}
-          />
-          Continua cu Google
-        </button>
-
-        <div style={styles.divider}>
-          <span style={styles.dividerText}>sau cu email</span>
+    <div className="auth-page">
+      <div className="auth-brand">
+        <div className="auth-brand-content">
+          <div className="auth-brand-logo">
+            <span style={{ color: '#fff' }}>Rev</span><span style={{ color: 'var(--bid-teal)' }}>Bid</span>
+          </div>
+          <h1 className="auth-brand-title">Marketplace de licitatii inverse</h1>
+          <p className="auth-brand-desc">Posteaza cererea ta si lasa furnizorii sa concureze pentru cel mai bun pret. Economisesti timp si bani.</p>
+          <div className="auth-brand-features">
+            <div className="auth-brand-feature">
+              <span className="auth-feature-icon">📉</span>
+              <span>Preturile scad, nu cresc</span>
+            </div>
+            <div className="auth-brand-feature">
+              <span className="auth-feature-icon">🏆</span>
+              <span>Furnizori verificati</span>
+            </div>
+            <div className="auth-brand-feature">
+              <span className="auth-feature-icon">⚡</span>
+              <span>Oferte in timp real</span>
+            </div>
+          </div>
         </div>
-
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <input
-            style={styles.input}
-            type="email"
-            name="email"
-            placeholder="Email"
-            value={form.email}
-            onChange={handleChange}
-            required
-          />
-          <input
-            style={styles.input}
-            type="password"
-            name="password"
-            placeholder="Parola"
-            value={form.password}
-            onChange={handleChange}
-            required
-          />
-
-          {error && <p style={styles.error}>{error}</p>}
-
-          <button style={styles.button} type="submit" disabled={loading}>
-            {loading ? 'Se incarca...' : 'Autentificare'}
-          </button>
-        </form>
-
-        <p style={styles.link}>
-          Nu ai cont?{' '}
-          <Link to="/register">Inregistreaza-te</Link>
-        </p>
       </div>
+
+      <div className="auth-form-side">
+        <div className="auth-card">
+          <h2 className="auth-title">Autentificare</h2>
+          <p className="auth-subtitle">Bine ai revenit! Conecteaza-te la contul tau.</p>
+
+          <button className="auth-google-btn" onClick={handleGoogle}>
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="18" />
+            Continua cu Google
+          </button>
+
+          <div className="auth-divider"><span>sau cu email</span></div>
+
+          <form onSubmit={handleSubmit} className="auth-form">
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input className="form-input" type="email" name="email" placeholder="exemplu@email.com" value={form.email} onChange={handleChange} required />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Parola</label>
+              <input className="form-input" type="password" name="password" placeholder="Introdu parola" value={form.password} onChange={handleChange} required />
+            </div>
+
+            {error && <div className="alert alert-error" style={{ marginBottom: '0.5rem' }}>{error}</div>}
+
+            <button className="btn btn-primary btn-block btn-lg" type="submit" disabled={loading}>
+              {loading ? 'Se incarca...' : 'Autentificare'}
+            </button>
+          </form>
+
+          <p className="auth-footer-text">
+            Nu ai cont?{' '}<Link to="/register">Inregistreaza-te</Link>
+          </p>
+        </div>
+      </div>
+
+      <style>{authCSS}</style>
     </div>
   );
 }
 
-const styles = {
-  page:        { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f5f5f5' },
-  card:        { background: '#fff', padding: '2rem', borderRadius: '8px', width: '100%', maxWidth: '380px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' },
-  title:       { fontSize: '24px', fontWeight: '600', marginBottom: '4px' },
-  subtitle:    { color: '#666', marginBottom: '1.5rem', fontSize: '14px' },
-  googleBtn:   { width: '100%', padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', fontWeight: '500' },
-  divider:     { position: 'relative', textAlign: 'center', margin: '16px 0', borderTop: '1px solid #e2e8f0' },
-  dividerText: { position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: '#fff', padding: '0 12px', fontSize: '12px', color: '#a0aec0' },
-  form:        { display: 'flex', flexDirection: 'column', gap: '12px' },
-  input:       { padding: '10px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' },
-  button:      { padding: '10px', background: '#1a1a1a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' },
-  error:       { color: '#e53e3e', fontSize: '13px' },
-  link:        { marginTop: '1rem', fontSize: '13px', textAlign: 'center', color: '#666' },
-};
+const authCSS = `
+.auth-page { display: flex; min-height: 100vh; }
+.auth-brand {
+  flex: 1; background: linear-gradient(135deg, var(--primary-navy) 0%, var(--deep-blue) 100%);
+  display: flex; align-items: center; justify-content: center; padding: 3rem;
+  position: relative; overflow: hidden;
+}
+.auth-brand::before {
+  content: ''; position: absolute; top: -50%; right: -50%;
+  width: 100%; height: 100%; background: radial-gradient(circle, rgba(0,169,157,0.12) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.auth-brand::after {
+  content: ''; position: absolute; bottom: -30%; left: -30%;
+  width: 80%; height: 80%; background: radial-gradient(circle, rgba(8,113,196,0.1) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.auth-brand-content { position: relative; z-index: 1; max-width: 420px; }
+.auth-brand-logo { font-size: 2.5rem; font-weight: 800; margin-bottom: 1.5rem; }
+.auth-brand-title { color: #fff; font-size: 1.75rem; margin-bottom: 1rem; line-height: 1.3; }
+.auth-brand-desc { color: rgba(255,255,255,0.7); font-size: 1rem; line-height: 1.6; margin-bottom: 2rem; }
+.auth-brand-features { display: flex; flex-direction: column; gap: 12px; }
+.auth-brand-feature { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,0.85); font-size: 0.9375rem; font-weight: 500; }
+.auth-feature-icon { font-size: 1.25rem; }
+
+.auth-form-side {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 2rem; background: var(--bg-page);
+}
+.auth-card { width: 100%; max-width: 420px; }
+.auth-title { font-size: 1.5rem; font-weight: 700; color: var(--text-heading); margin-bottom: 6px; }
+.auth-subtitle { font-size: 0.9375rem; color: var(--text-muted); margin-bottom: 1.75rem; }
+
+.auth-google-btn {
+  width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-card); cursor: pointer; font-size: 0.875rem; font-weight: 500;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  font-family: var(--font-sans); transition: all var(--transition-fast); color: var(--text-body);
+}
+.auth-google-btn:hover { border-color: var(--action-blue); box-shadow: var(--shadow-sm); }
+
+.auth-divider {
+  position: relative; text-align: center; margin: 1.5rem 0; border-top: 1px solid var(--border);
+}
+.auth-divider span {
+  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+  background: var(--bg-page); padding: 0 14px; font-size: 0.75rem; color: var(--text-muted);
+}
+
+.auth-form { display: flex; flex-direction: column; gap: 4px; }
+.auth-footer-text { margin-top: 1.5rem; font-size: 0.875rem; text-align: center; color: var(--text-muted); }
+
+@media (max-width: 900px) {
+  .auth-page { flex-direction: column; }
+  .auth-brand { padding: 2rem; min-height: auto; }
+  .auth-brand-content { max-width: 100%; }
+  .auth-brand-title { font-size: 1.375rem; }
+  .auth-brand-features { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  .auth-brand-feature { font-size: 0.8125rem; }
+  .auth-form-side { padding: 1.5rem; }
+}
+`;

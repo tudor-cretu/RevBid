@@ -5,7 +5,7 @@ const Bid             = require('../models/Bid');
 const Subscription    = require('../models/Subscription');
 const AuctionChat     = require('../models/AuctionChat');
 
-// GET /api/auctions — toate licitatiile active (public)
+// GET /api/auctions — toate licitatiile (filtrate)
 router.get('/', async (req, res) => {
   try {
     const { category, status } = req.query;
@@ -31,7 +31,6 @@ router.get('/:id', async (req, res) => {
       .populate('buyer', 'firstName lastName companyName rating');
 
     if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
-
     res.json(auction);
   } catch (err) {
     res.status(500).json({ message: 'Eroare server', error: err.message });
@@ -54,14 +53,21 @@ router.post('/', authMiddleware, async (req, res) => {
     const auction = await Auction.create({
       buyer: req.user.id,
       title, description, category,
-      tags: tags || [],
+      tags:        tags || [],
       startPrice,
       targetPrice: targetPrice || null,
-      deadline: deadline ? new Date(deadline) : null,
-      autoExtend: autoExtend || false,
-      location: location || {},
-      status: 'active',
+      deadline:    deadline ? new Date(deadline) : null,
+      autoExtend:  autoExtend || false,
+      location:    location || {},
+      status:      'active',
     });
+
+    // Buyer se aboneaza automat la propria licitatie
+    await Subscription.findOneAndUpdate(
+      { user: req.user.id, auction: auction._id },
+      { user: req.user.id, auction: auction._id },
+      { upsert: true, new: true }
+    );
 
     res.status(201).json(auction);
   } catch (err) {
@@ -78,7 +84,6 @@ router.put('/:id', authMiddleware, async (req, res) => {
     if (auction.buyer.toString() !== req.user.id) {
       return res.status(403).json({ message: 'Nu ai permisiune' });
     }
-
     if (auction.status === 'closed') {
       return res.status(400).json({ message: 'Licitatia e deja inchisa' });
     }
@@ -133,51 +138,55 @@ router.post('/:id/chat', authMiddleware, async (req, res) => {
     if (!content?.trim()) return res.status(400).json({ message: 'Mesajul e gol' });
 
     const auction = await Auction.findById(req.params.id);
-    if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
-    if (auction.status !== 'active') return res.status(400).json({ message: 'Licitatia nu e activa' });
+    if (!auction)                       return res.status(404).json({ message: 'Licitatia nu exista' });
+    if (auction.status !== 'active')    return res.status(400).json({ message: 'Licitatia nu e activa' });
 
     const isBuyer = auction.buyer.toString() === req.user.id;
     const hasBid  = await Bid.exists({ auction: req.params.id, supplier: req.user.id });
 
     if (!isBuyer && !hasBid) {
-      return res.status(403).json({ message: 'Doar cumparatorul si furnizorii care au ofertat pot scrie aici' });
+      return res.status(403).json({
+        message: 'Doar cumparatorul si furnizorii care au ofertat pot scrie aici',
+      });
     }
 
-    const message = await AuctionChat.create({
+    // Salveaza mesajul
+    const message   = await AuctionChat.create({
       auction: req.params.id,
       sender:  req.user.id,
       content: content.trim(),
     });
-
     const populated = await message.populate('sender', 'firstName lastName avatar role');
 
     const io = req.app.get('io');
-    console.log('IO disponibil:', !!io);
-    console.log('Sender:', req.user.id);
-    console.log('Auction buyer:', auction.buyer.toString());
 
+    // 1. Trimite mesajul in timp real tuturor celor din camera licitatiei
+    //    (inclusiv alti useri care au pagina deschisa acum)
+    //    Sender-ul primeste mesajul direct din raspunsul REST, nu via socket,
+    //    asa ca emitem catre toti CEILALTI din room.
+    io.to(req.params.id).emit('auction_chat', populated);
+
+    // 2. Colecteaza destinatarii notificarilor (abonati + ofertanti + buyer)
     const [subscriptions, bids] = await Promise.all([
       Subscription.find({ auction: req.params.id }).select('user'),
-      Bid.find({ auction: req.params.id }).select('supplier'),
+      Bid.find({ auction: req.params.id }).distinct('supplier'),
     ]);
-
-    console.log('Subscriptions:', subscriptions.length);
-    console.log('Bids:', bids.length);
 
     const recipientIds = new Set([
       auction.buyer.toString(),
       ...subscriptions.map(s => s.user.toString()),
-      ...bids.map(b => b.supplier.toString()),
+      ...bids.map(b => b.toString()),
     ]);
+
+    // Nu notifica expeditorul
     recipientIds.delete(req.user.id);
 
-    console.log('Recipients:', [...recipientIds]);
-
+    // 3. Trimite notificare in-app pentru fiecare destinatar
+    const notifText = `${populated.sender.firstName} a scris in chat-ul licitatiei "${auction.title}"`;
     for (const userId of recipientIds) {
-      console.log(`Emit notification catre user_${userId}`);
       io.to(`user_${userId}`).emit('notification', {
         type: 'auction_chat',
-        text: `${populated.sender.firstName} a scris in chat-ul licitatiei "${auction.title}"`,
+        text: notifText,
         link: `/auction/${req.params.id}`,
         time: new Date(),
       });
