@@ -26,8 +26,16 @@ export default function AuctionDetail() {
   const [expired,      setExpired]      = useState(false);
   const [activeImg,    setActiveImg]    = useState(0);
 
+  // Approval requests state (buyer)
+  const [myRequests,   setMyRequests]   = useState([]);
+  const [deleteModal,  setDeleteModal]  = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleting,     setDeleting]     = useState(false);
+  const [requestToast, setRequestToast] = useState('');
+
   useEffect(() => {
     fetchAuction(); fetchSubscription(); fetchBids(); connectSocket();
+    if (user?.role === 'buyer') fetchMyRequests();
     return () => socketRef.current?.disconnect();
   }, [id]);
 
@@ -65,6 +73,41 @@ export default function AuctionDetail() {
     setSubLoading(true);
     try { const res = await fetch(`${API_URL}/api/subscriptions/${id}`, { method: subscribed ? 'DELETE' : 'POST', headers: { Authorization: `Bearer ${token}` } }); const d = await res.json(); setSubscribed(d.subscribed); }
     finally { setSubLoading(false); }
+  };
+
+  const fetchMyRequests = async () => {
+    try {
+      const res  = await fetch(`${API_URL}/api/auction-requests/for/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      setMyRequests(Array.isArray(data) ? data : []);
+    } catch {}
+  };
+
+  const submitDeleteRequest = async () => {
+    setDeleting(true);
+    try {
+      const res  = await fetch(`${API_URL}/api/auction-requests/${id}/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:   JSON.stringify({ reason: deleteReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRequestToast('error:' + data.message);
+      } else {
+        setDeleteModal(false); setDeleteReason('');
+        setRequestToast('ok:Cererea de stergere a fost trimisa catre admin.');
+        fetchMyRequests();
+      }
+    } catch { setRequestToast('error:Eroare de conexiune.'); }
+    finally { setDeleting(false); }
+  };
+
+  const cancelRequest = async (requestId) => {
+    try {
+      await fetch(`${API_URL}/api/auction-requests/${requestId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      fetchMyRequests();
+    } catch {}
   };
   const [socketReady, setSocketReady] = useState(false);
 
@@ -133,17 +176,124 @@ export default function AuctionDetail() {
           <button className="btn btn-outline btn-sm" onClick={() => navigate(-1)}>← Inapoi</button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
-              className={`btn btn-sm ${subscribed ? 'btn-danger' : 'btn-outline'}`}
+              className={`btn btn-sm`}
               onClick={toggleSubscription}
               disabled={subLoading}
-              title={subscribed ? 'Dezaboneaza-te de la notificari' : 'Aboneaza-te pentru notificari'}
-              style={!subscribed ? { borderColor: 'var(--bid-teal)', color: 'var(--bid-teal)' } : {}}
+              title={subscribed ? 'Esti abonat — click pentru dezabonare' : 'Aboneaza-te pentru a primi notificari'}
+              style={subscribed
+                ? { background: 'var(--bid-teal)', color: '#fff', border: '1px solid var(--bid-teal)' }
+                : { borderColor: 'var(--bid-teal)', color: 'var(--bid-teal)', background: 'transparent', border: '1px solid var(--bid-teal)' }
+              }
             >
-              {subLoading ? '...' : subscribed ? '🔕 Dezaboneaza-te' : '🔔 Aboneaza-te'}
+              {subLoading ? '...' : subscribed ? '✅ Abonat' : '🔔 Aboneaza-te'}
             </button>
             <span className={`badge ${statusCls}`} style={{ fontSize: '0.75rem', padding: '5px 14px' }}>{auction.status}</span>
           </div>
         </div>
+
+        {/* ── Bara de acțiuni BUYER ─────────────────────────────── */}
+        {isBuyer && isActive && (
+          <div style={{
+            display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center',
+            background: 'var(--ice-blue)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg)', padding: '12px 16px', marginBottom: '1rem',
+          }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flex: 1 }}>
+              {myRequests.some(r => r.type === 'edit' && r.status === 'pending') && (
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--radius-full)', background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>
+                  ⏳ Editare în așteptarea aprobării
+                </span>
+              )}
+              {myRequests.some(r => r.type === 'delete' && r.status === 'pending') && (
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--radius-full)', background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>
+                  ⏳ Ștergere în așteptarea aprobării
+                </span>
+              )}
+              {myRequests.some(r => r.status === 'rejected') && (
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--radius-full)', background: '#FEF2F2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
+                  ❌ {myRequests.find(r => r.status === 'rejected')?.type === 'edit' ? 'Editare' : 'Ștergere'} respinsă
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {myRequests.some(r => r.type === 'edit' && r.status === 'pending') ? (
+                <button
+                  className="btn btn-sm"
+                  style={{ borderColor: 'var(--warning-amber)', color: 'var(--warning-amber)', border: '1px solid var(--warning-amber)', background: 'transparent' }}
+                  onClick={() => cancelRequest(myRequests.find(r => r.type === 'edit' && r.status === 'pending')._id)}
+                >
+                  ✕ Anulează cererea de editare
+                </button>
+              ) : (
+                <button
+                  className="btn btn-sm"
+                  style={{ borderColor: 'var(--action-blue)', color: 'var(--action-blue)', border: '1px solid var(--action-blue)', background: 'transparent' }}
+                  onClick={() => navigate(`/auction/${id}/edit-request`)}
+                >
+                  ✏️ Solicită editare
+                </button>
+              )}
+
+              {myRequests.some(r => r.type === 'delete' && r.status === 'pending') ? (
+                <button
+                  className="btn btn-sm"
+                  style={{ borderColor: 'var(--warning-amber)', color: 'var(--warning-amber)', border: '1px solid var(--warning-amber)', background: 'transparent' }}
+                  onClick={() => cancelRequest(myRequests.find(r => r.type === 'delete' && r.status === 'pending')._id)}
+                >
+                  ✕ Anulează cererea de ștergere
+                </button>
+              ) : (
+                <button className="btn btn-sm btn-danger" onClick={() => setDeleteModal(true)}>
+                  🗑️ Solicită ștergere
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Toast feedback cereri */}
+        {requestToast && (
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '10px 16px', borderRadius: 'var(--radius-md)', marginBottom: '1rem',
+            background: requestToast.startsWith('ok:') ? '#ECFDF5' : '#FEF2F2',
+            color:      requestToast.startsWith('ok:') ? '#065F46' : '#991B1B',
+            border:     `1px solid ${requestToast.startsWith('ok:') ? '#6EE7B7' : '#FCA5A5'}`,
+            fontSize: '0.875rem',
+          }}>
+            <span>{requestToast.startsWith('ok:') ? '✅ ' : '❌ '}{requestToast.replace(/^(ok:|error:)/, '')}</span>
+            <button onClick={() => setRequestToast('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', padding: '0 4px', color: 'inherit' }}>✕</button>
+          </div>
+        )}
+
+        {/* Modal confirmare ștergere */}
+        {deleteModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+            <div className="card" style={{ maxWidth: 460, width: '100%', padding: '1.5rem', boxShadow: 'var(--shadow-xl)' }}>
+              <h3 style={{ margin: '0 0 8px', color: 'var(--text-heading)' }}>🗑️ Solicită ștergerea licitației</h3>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                <strong>"{auction.title}"</strong> va rămâne activă până când adminul aprobă cererea. Cererea de ștergere poate fi anulată înainte de aprobare.
+              </p>
+              <div className="form-group">
+                <label className="form-label">Motivul ștergerii (opțional)</label>
+                <textarea
+                  className="form-input"
+                  placeholder="Ex: Proiectul a fost anulat, nu mai am nevoie de oferte..."
+                  value={deleteReason}
+                  onChange={e => setDeleteReason(e.target.value)}
+                  style={{ height: 80, resize: 'vertical' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button className="btn btn-outline" onClick={() => { setDeleteModal(false); setDeleteReason(''); }}>Anulează</button>
+                <button className="btn btn-danger" onClick={submitDeleteRequest} disabled={deleting}>
+                  {deleting ? 'Se trimite...' : 'Trimite cererea de ștergere'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="ad-layout">
           {/* Left */}

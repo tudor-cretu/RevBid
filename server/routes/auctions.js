@@ -6,6 +6,7 @@ const authMiddleware = require('../middleware/auth');
 const Bid            = require('../models/Bid');
 const Subscription   = require('../models/Subscription');
 const AuctionChat    = require('../models/AuctionChat');
+const notifyUser     = require('../utils/notify');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
 
@@ -251,14 +252,15 @@ router.post('/:id/chat', authMiddleware, async (req, res) => {
     recipientIds.delete(req.user.id);
 
     const notifText = `${populated.sender.firstName} a scris in chat-ul licitatiei "${auction.title}"`;
+    const notifPromises = [];
     for (const userId of recipientIds) {
-      io.to(`user_${userId}`).emit('notification', {
+      notifPromises.push(notifyUser(io, userId, {
         type: 'auction_chat',
         text: notifText,
         link: `/auction/${req.params.id}`,
-        time: new Date(),
-      });
+      }));
     }
+    await Promise.all(notifPromises);
 
     res.status(201).json(populated);
   } catch (err) {

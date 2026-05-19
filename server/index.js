@@ -39,14 +39,17 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 /* ── Rute ────────────────────────────────────────────────────── */
-app.use('/api/auth',          require('./routes/auth'));
-app.use('/api/auctions',      require('./routes/auctions'));
-app.use('/api/upload',        require('./routes/upload'));
-app.use('/api/bids',          require('./routes/bids'));
-app.use('/api/admin',         require('./routes/admin'));
-app.use('/api/support',       require('./routes/support'));
-app.use('/api/messages',      require('./routes/messages'));
-app.use('/api/subscriptions', require('./routes/subscriptions'));
+app.use('/api/auth',             require('./routes/auth'));
+app.use('/api/auctions',         require('./routes/auctions'));
+app.use('/api/upload',           require('./routes/upload'));
+app.use('/api/bids',             require('./routes/bids'));
+app.use('/api/admin',            require('./routes/admin'));
+app.use('/api/support',          require('./routes/support'));
+app.use('/api/messages',         require('./routes/messages'));
+app.use('/api/subscriptions',    require('./routes/subscriptions'));
+app.use('/api/notifications',    require('./routes/notifications'));
+app.use('/api/auction-requests', require('./routes/auctionRequests'));
+
 
 app.get('/', (req, res) => res.json({ message: 'RevBid API running' }));
 

@@ -1,8 +1,8 @@
-import { useNavigate }                   from 'react-router-dom';
-import { useAuth }                       from '../context/AuthContext';
-import { useEffect, useState, useRef }   from 'react';
-import { io }                            from 'socket.io-client';
-import { API_URL }                       from '../config';
+import { useNavigate }                 from 'react-router-dom';
+import { useAuth }                     from '../context/AuthContext';
+import { useEffect, useState, useRef } from 'react';
+import { io }                          from 'socket.io-client';
+import { API_URL }                     from '../config';
 
 export default function Navbar() {
   const { user, logout, token } = useAuth();
@@ -14,19 +14,62 @@ export default function Navbar() {
   const socketRef   = useRef(null);
   const dropdownRef = useRef(null);
 
+  // ── Fetch notifications from DB on mount ──────────────────────
+  // This ensures offline users see notifications they missed
+  useEffect(() => {
+    if (!user || !token) return;
+    fetchNotifications();
+  }, [user, token]);
+
+  const fetchNotifications = async () => {
+    try {
+      const res  = await fetch(`${API_URL}/api/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setNotifications(
+        data.map(n => ({
+          id:   n._id,
+          _id:  n._id,
+          type: n.type,
+          text: n.text,
+          link: n.link,
+          time: n.createdAt,
+          read: n.read,
+        }))
+      );
+    } catch {}
+  };
+
+  // ── Connect socket and listen for live notifications ──────────
   useEffect(() => {
     if (!user || !token) return;
     const s = io(API_URL, { auth: { token } });
+
     s.on('connect', () => console.log('Navbar socket conectat'));
+
     s.on('notification', (notif) => {
-      setNotifications(prev => [{
-        id: Date.now() + Math.random(), ...notif, read: false,
-      }, ...prev].slice(0, 30));
+      setNotifications(prev => {
+        // Deduplicate by _id (prevents double-show when DB fetch + socket both deliver)
+        if (notif._id && prev.some(n => n._id === notif._id)) return prev;
+        return [{
+          id:   notif._id || (Date.now() + Math.random()),
+          _id:  notif._id || null,
+          type: notif.type,
+          text: notif.text,
+          link: notif.link,
+          time: notif.time || new Date(),
+          read: notif.read ?? false,
+        }, ...prev].slice(0, 50);
+      });
     });
+
     socketRef.current = s;
     return () => s.disconnect();
   }, [user, token]);
 
+  // ── Outside click closes dropdown ─────────────────────────────
   useEffect(() => {
     const handleClick = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -39,10 +82,21 @@ export default function Navbar() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const handleBellClick = () => {
+  // ── Bell click: show dropdown + mark all as read ──────────────
+  const handleBellClick = async () => {
+    const wasOpen = showDropdown;
     setShowDropdown(p => !p);
-    if (!showDropdown) {
+
+    if (!wasOpen && unreadCount > 0) {
+      // Optimistic update
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      // Persist to DB
+      try {
+        await fetch(`${API_URL}/api/notifications/read`, {
+          method:  'PUT',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {}
     }
   };
 
@@ -51,7 +105,16 @@ export default function Navbar() {
     navigate(notif.link);
   };
 
-  const clearAll = () => setNotifications([]);
+  // ── Clear all ─────────────────────────────────────────────────
+  const clearAll = async () => {
+    setNotifications([]);
+    try {
+      await fetch(`${API_URL}/api/notifications`, {
+        method:  'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {}
+  };
 
   const handleLogout = () => { logout(); navigate('/login'); };
 
@@ -68,6 +131,7 @@ export default function Navbar() {
     auction_chat: '🏷️',
     bid:          '💰',
     outbid:       '⚠️',
+    auction_closed: '🔒',
   }[type] || '🔔');
 
   if (!user) return null;
@@ -99,7 +163,10 @@ export default function Navbar() {
           {/* Bell */}
           <div className="rb-nav-bell-wrap" ref={dropdownRef}>
             <button className="rb-nav-bell" onClick={handleBellClick} title="Notificari">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
               {unreadCount > 0 && (
                 <span className="rb-nav-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
               )}
@@ -156,7 +223,11 @@ export default function Navbar() {
           </div>
 
           <button className="rb-nav-logout" onClick={handleLogout}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
             <span className="hide-mobile">Deconectare</span>
           </button>
         </div>
@@ -226,7 +297,7 @@ const navbarCSS = `
 .rb-notif-clear { font-size: 0.75rem; color: var(--action-blue); background: none; border: none; cursor: pointer; font-family: var(--font-sans); }
 .rb-notif-clear:hover { text-decoration: underline; }
 .rb-notif-empty { padding: 2rem; text-align: center; }
-.rb-notif-list { max-height: 360px; overflow-y: auto; }
+.rb-notif-list { max-height: 380px; overflow-y: auto; }
 .rb-notif-item {
   display: flex; gap: 10px; padding: 12px 16px; cursor: pointer;
   border-bottom: 1px solid var(--border-light); align-items: flex-start;

@@ -3,6 +3,7 @@ const authMiddleware = require('../middleware/auth');
 const Conversation   = require('../models/Conversation');
 const Message        = require('../models/Message');
 const { upload, cloudinary } = require('../config/cloudinary');
+const notifyUser     = require('../utils/notify');
 
 // GET /api/messages — toate conversatiile userului
 router.get('/', authMiddleware, async (req, res) => {
@@ -99,23 +100,25 @@ router.post('/:conversationId', authMiddleware, async (req, res) => {
 
     const io = req.app.get('io');
 
-    // Emit mesaj catre ceilalti participanti (pentru chat live)
+    // Emit mesaj live + notificare persistata pentru fiecare celalalt participant
+    const msgPromises = [];
     conversation.participants.forEach(participantId => {
       if (participantId.toString() !== req.user.id) {
+        // Mesaj live in camera de chat
         io.to(`user_${participantId}`).emit('new_message', {
           conversationId: req.params.conversationId,
           message:        populated,
         });
 
-        // Notificare separata pentru Navbar
-        io.to(`user_${participantId}`).emit('notification', {
+        // Notificare persistata (DB + socket) — functioneaza si offline
+        msgPromises.push(notifyUser(io, participantId.toString(), {
           type: 'message',
           text: `${populated.sender.firstName} ${populated.sender.lastName}: ${content.trim()}`,
           link: '/messages',
-          time: new Date(),
-        });
+        }));
       }
     });
+    await Promise.all(msgPromises);
 
     res.status(201).json(populated);
   } catch (err) {
@@ -150,6 +153,7 @@ router.post('/:conversationId/image', authMiddleware, upload.single('image'), as
     const populated = await message.populate('sender', 'firstName lastName avatar');
 
     const io = req.app.get('io');
+    const imgPromises = [];
     conversation.participants.forEach(participantId => {
       if (participantId.toString() !== req.user.id) {
         io.to(`user_${participantId}`).emit('new_message', {
@@ -157,14 +161,15 @@ router.post('/:conversationId/image', authMiddleware, upload.single('image'), as
           message:        populated,
         });
 
-        io.to(`user_${participantId}`).emit('notification', {
+        // Notificare persistata (DB + socket)
+        imgPromises.push(notifyUser(io, participantId.toString(), {
           type: 'message',
           text: `${populated.sender.firstName} ${populated.sender.lastName}: 📷 Imagine`,
           link: '/messages',
-          time: new Date(),
-        });
+        }));
       }
     });
+    await Promise.all(imgPromises);
 
     res.status(201).json(populated);
   } catch (err) {
