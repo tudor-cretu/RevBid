@@ -20,14 +20,44 @@ export default function AuctionDetail() {
   const [error,    setError]    = useState('');
   const [status,   setStatus]   = useState('');
   const socketRef = useRef(null);
+  const [subscribed,   setSubscribed]   = useState(false);
+  const [subLoading,   setSubLoading]   = useState(false);
+  const [segments,     setSegments]     = useState([]);
+  const [expired,      setExpired]      = useState(false);
 
   // Fetch date initiale
   useEffect(() => {
     fetchAuction();
+    fetchSubscription();
     fetchBids();
     connectSocket();
     return () => socketRef.current?.disconnect();
   }, [id]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (!auction?.deadline) return;
+    const pad = n => String(n).padStart(2, '0');
+    const tick = () => {
+      const diff = new Date(auction.deadline) - Date.now();
+      if (diff <= 0) {
+        setSegments([]);
+        setExpired(true);
+        return;
+      }
+      setExpired(false);
+      const d = Math.floor(diff / 86400000);
+      const h = Math.floor((diff % 86400000) / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setSegments(d > 0
+        ? [['zile', pad(d)], ['ore', pad(h)], ['min', pad(m)], ['sec', pad(s)]]
+        : [['ore', pad(h)], ['min', pad(m)], ['sec', pad(s)]]);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [auction?.deadline]);
 
   const fetchAuction = async () => {
     try {
@@ -47,6 +77,30 @@ export default function AuctionDetail() {
       const data = await res.json();
       setBids(Array.isArray(data) ? data : []);
     } catch {}
+  };
+
+  const fetchSubscription = async () => {
+    try {
+      const res  = await fetch(`${API_URL}/api/subscriptions/check/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setSubscribed(data.subscribed);
+    } catch {}
+  };
+
+  const toggleSubscription = async () => {
+    setSubLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/subscriptions/${id}`, {
+        method:  subscribed ? 'DELETE' : 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setSubscribed(data.subscribed);
+    } finally {
+      setSubLoading(false);
+    }
   };
 
   const connectSocket = () => {
@@ -99,9 +153,25 @@ export default function AuctionDetail() {
       {/* Header */}
       <div style={styles.topBar}>
         <button style={styles.backBtn} onClick={() => navigate(-1)}>← Inapoi</button>
-        <span style={{ ...styles.statusBadge, background: statusColor(auction.status) }}>
-          {auction.status}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {auction.buyer?._id !== user?.id && auction.buyer !== user?.id && (
+            <button
+              style={{
+                ...styles.backBtn,
+                color:       subscribed ? '#e53e3e' : '#38a169',
+                borderColor: subscribed ? '#FED7D7' : '#C6F6D5',
+                background:  subscribed ? '#FFF5F5' : '#F0FFF4',
+              }}
+              onClick={toggleSubscription}
+              disabled={subLoading}
+            >
+              {subLoading ? '...' : subscribed ? '🔕 Dezaboneaza-te' : '🔔 Aboneaza-te'}
+            </button>
+          )}
+          <span style={{ ...styles.statusBadge, background: statusColor(auction.status) }}>
+            {auction.status}
+          </span>
+        </div>
       </div>
 
       <div style={styles.layout}>
@@ -152,9 +222,30 @@ export default function AuctionDetail() {
             </div>
 
             {auction.deadline && (
-              <p style={styles.deadline}>
-                ⏰ Deadline: {new Date(auction.deadline).toLocaleString('ro-RO')}
-              </p>
+              <div style={{ marginBottom: '10px' }}>
+                <p style={styles.deadline}>
+                  ⏰ Deadline: {new Date(auction.deadline).toLocaleString('ro-RO')}
+                </p>
+                {expired ? (
+                  <p style={{ fontSize: '13px', color: '#e53e3e', fontWeight: '600', marginTop: '6px' }}>
+                    Licitatie expirata
+                  </p>
+                ) : segments.length > 0 && (
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'center', marginTop: '8px' }}>
+                    {segments.map(([lbl, val], i) => (
+                      <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={styles.timerSeg}>
+                          <span style={styles.timerVal}>{val}</span>
+                          <span style={styles.timerLbl}>{lbl}</span>
+                        </div>
+                        {i < segments.length - 1 && (
+                          <span style={styles.timerSep}>:</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             <p style={styles.buyer}>
@@ -292,7 +383,11 @@ const styles = {
   priceLabel:   { fontSize: '11px', color: '#718096', margin: '0' },
   currentPrice: { fontSize: '24px', fontWeight: '700', color: '#e53e3e', margin: '0' },
   targetPrice:  { fontSize: '20px', fontWeight: '600', color: '#718096', margin: '0' },
-  deadline:     { fontSize: '13px', color: '#d69e2e', marginBottom: '8px' },
+  deadline:     { fontSize: '13px', color: '#d69e2e', marginBottom: '4px', textAlign: 'center' },
+  timerSeg:     { display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#F7FAFC', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', minWidth: '48px' },
+  timerVal:     { fontSize: '20px', fontWeight: '600', color: '#1a1a1a', lineHeight: '1' },
+  timerLbl:     { fontSize: '10px', color: '#718096', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.04em' },
+  timerSep:     { fontSize: '18px', color: '#718096', fontWeight: '600', marginBottom: '14px' },
   buyer:        { fontSize: '13px', color: '#718096' },
   sectionTitle: { fontSize: '15px', fontWeight: '600', color: '#1a1a1a', marginBottom: '12px', marginTop: '0' },
   hint:         { fontSize: '13px', color: '#718096', marginBottom: '10px' },

@@ -98,11 +98,21 @@ router.post('/:conversationId', authMiddleware, async (req, res) => {
     const populated = await message.populate('sender', 'firstName lastName avatar');
 
     const io = req.app.get('io');
+
+    // Emit mesaj catre ceilalti participanti (pentru chat live)
     conversation.participants.forEach(participantId => {
       if (participantId.toString() !== req.user.id) {
         io.to(`user_${participantId}`).emit('new_message', {
           conversationId: req.params.conversationId,
           message:        populated,
+        });
+
+        // Notificare separata pentru Navbar
+        io.to(`user_${participantId}`).emit('notification', {
+          type: 'message',
+          text: `${populated.sender.firstName} ${populated.sender.lastName}: ${content.trim()}`,
+          link: '/messages',
+          time: new Date(),
         });
       }
     });
@@ -145,6 +155,13 @@ router.post('/:conversationId/image', authMiddleware, upload.single('image'), as
         io.to(`user_${participantId}`).emit('new_message', {
           conversationId: req.params.conversationId,
           message:        populated,
+        });
+
+        io.to(`user_${participantId}`).emit('notification', {
+          type: 'message',
+          text: `${populated.sender.firstName} ${populated.sender.lastName}: 📷 Imagine`,
+          link: '/messages',
+          time: new Date(),
         });
       }
     });

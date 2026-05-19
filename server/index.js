@@ -31,6 +31,7 @@ app.use('/api/bids', require('./routes/bids'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/messages', require('./routes/messages'));
+app.use('/api/subscriptions', require('./routes/subscriptions'));
 
 app.get('/', (req, res) => res.json({ message: 'RevBid API running' }));
 

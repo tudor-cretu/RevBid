@@ -2,6 +2,8 @@ const router          = require('express').Router();
 const Auction         = require('../models/Auction');
 const authMiddleware  = require('../middleware/auth');
 const Bid             = require('../models/Bid');
+const Subscription    = require('../models/Subscription');
+const AuctionChat     = require('../models/AuctionChat');
 
 // GET /api/auctions — toate licitatiile active (public)
 router.get('/', async (req, res) => {
@@ -111,8 +113,6 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-const AuctionChat = require('../models/AuctionChat');
-
 // GET /api/auctions/:id/chat — istoricul chat-ului
 router.get('/:id/chat', authMiddleware, async (req, res) => {
   try {
@@ -136,7 +136,6 @@ router.post('/:id/chat', authMiddleware, async (req, res) => {
     if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
     if (auction.status !== 'active') return res.status(400).json({ message: 'Licitatia nu e activa' });
 
-    // Verifica daca userul are dreptul sa scrie in chat
     const isBuyer = auction.buyer.toString() === req.user.id;
     const hasBid  = await Bid.exists({ auction: req.params.id, supplier: req.user.id });
 
@@ -152,9 +151,37 @@ router.post('/:id/chat', authMiddleware, async (req, res) => {
 
     const populated = await message.populate('sender', 'firstName lastName avatar role');
 
-    // Emite catre toti din camera licitatiei
     const io = req.app.get('io');
-    io.to(req.params.id).emit('auction_chat', populated);
+    console.log('IO disponibil:', !!io);
+    console.log('Sender:', req.user.id);
+    console.log('Auction buyer:', auction.buyer.toString());
+
+    const [subscriptions, bids] = await Promise.all([
+      Subscription.find({ auction: req.params.id }).select('user'),
+      Bid.find({ auction: req.params.id }).select('supplier'),
+    ]);
+
+    console.log('Subscriptions:', subscriptions.length);
+    console.log('Bids:', bids.length);
+
+    const recipientIds = new Set([
+      auction.buyer.toString(),
+      ...subscriptions.map(s => s.user.toString()),
+      ...bids.map(b => b.supplier.toString()),
+    ]);
+    recipientIds.delete(req.user.id);
+
+    console.log('Recipients:', [...recipientIds]);
+
+    for (const userId of recipientIds) {
+      console.log(`Emit notification catre user_${userId}`);
+      io.to(`user_${userId}`).emit('notification', {
+        type: 'auction_chat',
+        text: `${populated.sender.firstName} a scris in chat-ul licitatiei "${auction.title}"`,
+        link: `/auction/${req.params.id}`,
+        time: new Date(),
+      });
+    }
 
     res.status(201).json(populated);
   } catch (err) {
