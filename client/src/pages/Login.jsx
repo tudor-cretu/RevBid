@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth }        from '../context/AuthContext';
 import { API_URL }        from '../config';
 import AuthBrandPanel     from '../components/AuthBrandPanel';
+import AuthHelp           from '../components/AuthHelp';
 import Logo               from '../components/Logo';
 
 function GoogleIcon() {
@@ -66,8 +67,13 @@ export default function Login() {
               <input className="form-input" type="email" name="email" placeholder="exemplu@email.com" value={form.email} onChange={handleChange} required />
             </div>
             <div className="form-group">
-              <label className="form-label">Parolă</label>
-              <input className="form-input" type="password" name="password" placeholder="Introdu parola" value={form.password} onChange={handleChange} required />
+              <div className="auth-label-row">
+                <label className="form-label" htmlFor="login-password">Parolă</label>
+                <button type="button" className="auth-inline-link" onClick={() => navigate('/forgot-password')}>
+                  Ai uitat parola?
+                </button>
+              </div>
+              <input id="login-password" className="form-input" type="password" name="password" placeholder="Introdu parola" value={form.password} onChange={handleChange} required />
             </div>
 
             {error && <div className="alert alert-error" style={{ marginBottom: '0.5rem' }}>{error}</div>}
@@ -87,6 +93,8 @@ export default function Login() {
           <p className="auth-footer-text">
             Nu ai cont?{' '}<Link to="/register">Înregistrează-te gratuit</Link>
           </p>
+
+          <AuthHelp />
         </div>
       </div>
     </div>

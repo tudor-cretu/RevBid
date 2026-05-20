@@ -6,6 +6,7 @@ const jwt            = require('jsonwebtoken');
 const crypto         = require('crypto');
 const User           = require('../models/User');
 const sendMail       = require('../config/mailer');
+const { resetPasswordTemplate } = require('../config/emailTemplates');
 const authMiddleware = require('../middleware/auth');
 const passport       = require('../config/passport');
 const logger         = require('../utils/logger');
@@ -54,6 +55,43 @@ function checkRateLimit(email) {
 
 function resetAttempts(email) {
   loginAttempts.delete(email);
+}
+
+/* ── Rate limiter generic (în memorie) ──────────────────────────
+   Returnează true dacă cheia a depășit limita în fereastra dată.   */
+function hitLimit(map, key, max, windowMs) {
+  const now = Date.now();
+  const data = map.get(key);
+  if (!data || now > data.resetAt) {
+    map.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+  data.count += 1;
+  return data.count > max;
+}
+
+const resetIpAttempts    = new Map(); // forgot-password — per IP
+const resetEmailAttempts = new Map(); // forgot-password — per email
+const resetTokenAttempts = new Map(); // reset-password  — per IP
+const RESET_WINDOW_MS    = 15 * 60 * 1000;
+
+function clientIp(req) {
+  return (
+    req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    req.ip ||
+    'unknown'
+  );
+}
+
+/* ── Validare parolă nouă ────────────────────────────────────────
+   Minim 8 caractere, cel puțin o literă și o cifră.               */
+function validatePassword(pw) {
+  if (!pw || typeof pw !== 'string') return 'Parola este obligatorie';
+  if (pw.length < 8)        return 'Parola trebuie să aibă cel puțin 8 caractere';
+  if (!/[a-zA-Z]/.test(pw)) return 'Parola trebuie să conțină cel puțin o literă';
+  if (!/[0-9]/.test(pw))    return 'Parola trebuie să conțină cel puțin o cifră';
+  return null;
 }
 
 /* ── REGISTER ────────────────────────────────────────────────── */
@@ -290,6 +328,144 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
+  }
+});
+
+/* ── FORGOT PASSWORD ─────────────────────────────────────────────
+   Răspunde MEREU generic — nu dezvăluie dacă emailul există.       */
+router.post('/forgot-password', async (req, res) => {
+  const GENERIC = {
+    message: 'Dacă există un cont asociat acestui email, vei primi instrucțiuni pentru resetarea parolei.',
+  };
+  try {
+    const email = (req.body.email || '').toLowerCase().trim();
+    const ip    = clientIp(req);
+
+    /* Rate limiting — per IP și per email */
+    const blocked =
+      hitLimit(resetIpAttempts, ip, 10, RESET_WINDOW_MS) ||
+      (email && hitLimit(resetEmailAttempts, email, 3, RESET_WINDOW_MS));
+    if (blocked) {
+      logger.fromReq(req).security(EVENTS.AUTH.RESET_RATE_LIMITED,
+        'Prea multe cereri de resetare parolă', {
+          metadata: { email: maskEmail(email) },
+        });
+      return res.status(429).json({
+        message: 'Prea multe cereri. Încearcă din nou peste 15 minute.',
+      });
+    }
+
+    /* Validare email — răspuns generic chiar și pentru input invalid */
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.json(GENERIC);
+    }
+
+    const user = await User.findOne({ email });
+
+    logger.fromReq(req).info(EVENTS.AUTH.FORGOT_PASSWORD_REQUEST,
+      'Cerere de resetare parolă primită', {
+        metadata: { email: maskEmail(email), accountFound: !!user },
+      });
+
+    /* Trimitem email doar dacă există cont cu parolă (nu Google-only) */
+    if (user && user.passwordHash) {
+      const rawToken  = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+      user.resetPasswordTokenHash = tokenHash;
+      user.resetPasswordExpiry    = new Date(Date.now() + 60 * 60 * 1000); // 60 min
+      await user.save();
+
+      const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+      const resetUrl  = `${clientUrl}/reset-password?token=${rawToken}`;
+      const { subject, html } = resetPasswordTemplate({ firstName: user.firstName, resetUrl });
+      const sent = await sendMail({ to: email, subject, html });
+
+      if (sent) {
+        logger.fromReq(req).info(EVENTS.AUTH.RESET_EMAIL_SENT,
+          'Email de resetare parolă trimis', {
+            entityType: 'user', entityId: user._id.toString(),
+            metadata: { email: maskEmail(email) },
+          });
+      } else {
+        logger.fromReq(req).warn(EVENTS.NOTIFY.EMAIL_FAILED,
+          'Email de resetare parolă eșuat', {
+            entityType: 'user', entityId: user._id.toString(),
+          });
+      }
+    }
+
+    return res.json(GENERIC);
+
+  } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
+    /* Răspuns generic chiar și la eroare — nu expunem detalii */
+    return res.json(GENERIC);
+  }
+});
+
+/* ── RESET PASSWORD ──────────────────────────────────────────────
+   Validează token-ul (hash + expirare), setează parola nouă,
+   invalidează token-ul (single-use).                              */
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    const ip = clientIp(req);
+
+    /* Rate limiting — limitează încercările cu token */
+    if (hitLimit(resetTokenAttempts, ip, 15, RESET_WINDOW_MS)) {
+      logger.fromReq(req).security(EVENTS.AUTH.RESET_RATE_LIMITED,
+        'Prea multe încercări de resetare parolă cu token', {});
+      return res.status(429).json({
+        message: 'Prea multe încercări. Încearcă din nou peste 15 minute.',
+      });
+    }
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ message: 'Token de resetare lipsă.' });
+    }
+
+    /* Validare parolă nouă */
+    const pwError = validatePassword(password);
+    if (pwError) return res.status(400).json({ message: pwError });
+
+    /* Căutăm userul după HASH-ul token-ului, cu expirarea încă validă */
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const user = await User.findOne({
+      resetPasswordTokenHash: tokenHash,
+      resetPasswordExpiry:    { $gt: new Date() },
+    });
+
+    if (!user) {
+      logger.fromReq(req).security(EVENTS.AUTH.RESET_TOKEN_INVALID,
+        'Token de resetare invalid sau expirat', {});
+      return res.status(400).json({
+        message: 'Link-ul de resetare este invalid sau a expirat. Solicită un email nou.',
+      });
+    }
+
+    /* Setăm parola nouă + invalidăm token-ul (single-use) */
+    user.passwordHash           = await bcrypt.hash(password, 10);
+    user.resetPasswordTokenHash = null;
+    user.resetPasswordExpiry    = null;
+    /* Utilizatorul și-a dovedit accesul la email — îi marcăm contul verificat */
+    if (!user.isVerified) user.isVerified = true;
+    await user.save();
+
+    /* Resetăm și rate limiter-ul de login pentru acest cont */
+    resetAttempts(user.email);
+
+    logger.fromReq(req).audit(EVENTS.AUTH.RESET_PASSWORD_SUCCESS,
+      'Parolă resetată cu succes prin email', {
+        entityType: 'user', entityId: user._id.toString(),
+        metadata: { email: maskEmail(user.email) },
+      });
+
+    res.json({ message: 'Parola a fost resetată cu succes. Te poți autentifica acum.' });
+
+  } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
+    res.status(500).json({ message: 'Eroare server' });
   }
 });
 

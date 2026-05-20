@@ -20,6 +20,10 @@ const userSchema = new mongoose.Schema({
   // Verificare email
   verifyCode:       { type: String,  default: null },
   verifyCodeExpiry: { type: Date,    default: null },
+
+  // Resetare parolă — tokenul raw NU se salvează niciodată, doar hash-ul
+  resetPasswordTokenHash: { type: String, default: null },
+  resetPasswordExpiry:    { type: Date,   default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

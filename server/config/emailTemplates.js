@@ -19,7 +19,7 @@ function layout({ heading, headingColor = '#033667', accent = '#00A99D', intro, 
         ${bodyHtml}
         ${ctaText ? `<a href="${ctaUrl}" style="display:inline-block;background:${ctaColor};color:#ffffff;padding:11px 26px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;margin-top:4px">${ctaText}</a>` : ''}
         <p style="margin-top:28px;font-size:11px;color:#6B7C86;border-top:1px solid #E8EEF2;padding-top:14px">
-          RevBid — Marketplace de licitații inverse. Ai primit acest email pentru că ești implicat în această licitație.
+          RevBid — Marketplace de licitații inverse.
         </p>
       </div>
     </div>
@@ -153,6 +153,29 @@ const auctionEndedSubscriberTemplate = ({ firstName, auctionTitle, auctionId }) 
   }),
 });
 
+/* ── Resetare parolă ───────────────────────────────────────────── */
+const resetPasswordTemplate = ({ firstName, resetUrl }) => ({
+  subject: 'RevBid — Resetează-ți parola',
+  html: layout({
+    heading: 'Resetare parolă',
+    intro: `Salut <strong>${firstName || ''}</strong>, ai solicitat resetarea parolei pentru contul tău RevBid. Apasă butonul de mai jos pentru a seta o parolă nouă.`,
+    bodyHtml:
+      `<p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:14px 0 6px">
+        Dacă butonul nu funcționează, copiază acest link în browser:
+      </p>
+      <p style="font-size:12px;margin:0 0 16px;word-break:break-all">
+        <a href="${resetUrl}" style="color:#0871C4">${resetUrl}</a>
+      </p>
+      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:11px 13px;margin:0 0 12px">
+        <p style="margin:0;font-size:12px;color:#92400E">⏳ Link-ul expiră în <strong>60 de minute</strong> și poate fi folosit o singură dată.</p>
+      </div>
+      <p style="font-size:12px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
+        🔒 Dacă nu ai solicitat această resetare, poți ignora în siguranță acest email — parola ta rămâne neschimbată.
+      </p>`,
+    ctaText: 'Resetează parola', ctaUrl: resetUrl, ctaColor: '#00A99D',
+  }),
+});
+
 module.exports = {
   outbidTemplate,
   deadlineSoonTemplate,
@@ -161,4 +184,5 @@ module.exports = {
   auctionEndedBuyerTemplate,
   auctionLostTemplate,
   auctionEndedSubscriberTemplate,
+  resetPasswordTemplate,
 };
