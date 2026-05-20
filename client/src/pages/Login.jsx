@@ -1,7 +1,20 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth }   from '../context/AuthContext';
-import { API_URL }   from '../config';
+import { useAuth }        from '../context/AuthContext';
+import { API_URL }        from '../config';
+import AuthBrandPanel     from '../components/AuthBrandPanel';
+import Logo               from '../components/Logo';
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+      <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+      <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+      <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+    </svg>
+  );
+}
 
 export default function Login() {
   const { login } = useAuth();
@@ -31,38 +44,18 @@ export default function Login() {
 
   return (
     <div className="auth-page">
-      <div className="auth-brand">
-        <div className="auth-brand-content">
-          <div className="auth-brand-logo">
-            <span style={{ color: '#fff' }}>Rev</span><span style={{ color: 'var(--bid-teal)' }}>Bid</span>
-          </div>
-          <h1 className="auth-brand-title">Marketplace de licitatii inverse</h1>
-          <p className="auth-brand-desc">Posteaza cererea ta si lasa furnizorii sa concureze pentru cel mai bun pret. Economisesti timp si bani.</p>
-          <div className="auth-brand-features">
-            <div className="auth-brand-feature">
-              <span className="auth-feature-icon">📉</span>
-              <span>Preturile scad, nu cresc</span>
-            </div>
-            <div className="auth-brand-feature">
-              <span className="auth-feature-icon">🏆</span>
-              <span>Furnizori verificati</span>
-            </div>
-            <div className="auth-brand-feature">
-              <span className="auth-feature-icon">⚡</span>
-              <span>Oferte in timp real</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <AuthBrandPanel mode="login" />
 
       <div className="auth-form-side">
+        <div className="auth-mobile-logo"><Logo size="md" onClick={() => navigate('/')} /></div>
+
         <div className="auth-card">
           <h2 className="auth-title">Autentificare</h2>
-          <p className="auth-subtitle">Bine ai revenit! Conecteaza-te la contul tau.</p>
+          <p className="auth-subtitle">Bine ai revenit! Conectează-te la contul tău RevBid.</p>
 
           <button className="auth-google-btn" onClick={handleGoogle}>
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="18" />
-            Continua cu Google
+            <GoogleIcon />
+            Continuă cu Google
           </button>
 
           <div className="auth-divider"><span>sau cu email</span></div>
@@ -73,87 +66,29 @@ export default function Login() {
               <input className="form-input" type="email" name="email" placeholder="exemplu@email.com" value={form.email} onChange={handleChange} required />
             </div>
             <div className="form-group">
-              <label className="form-label">Parola</label>
+              <label className="form-label">Parolă</label>
               <input className="form-input" type="password" name="password" placeholder="Introdu parola" value={form.password} onChange={handleChange} required />
             </div>
 
             {error && <div className="alert alert-error" style={{ marginBottom: '0.5rem' }}>{error}</div>}
 
             <button className="btn btn-primary btn-block btn-lg" type="submit" disabled={loading}>
-              {loading ? 'Se incarca...' : 'Autentificare'}
+              {loading ? 'Se încarcă...' : 'Autentificare'}
             </button>
           </form>
 
+          <p className="auth-trust-note">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            Conexiune securizată — datele tale sunt criptate
+          </p>
+
           <p className="auth-footer-text">
-            Nu ai cont?{' '}<Link to="/register">Inregistreaza-te</Link>
+            Nu ai cont?{' '}<Link to="/register">Înregistrează-te gratuit</Link>
           </p>
         </div>
       </div>
-
-      <style>{authCSS}</style>
     </div>
   );
 }
-
-const authCSS = `
-.auth-page { display: flex; min-height: 100vh; }
-.auth-brand {
-  flex: 1; background: linear-gradient(135deg, var(--primary-navy) 0%, var(--deep-blue) 100%);
-  display: flex; align-items: center; justify-content: center; padding: 3rem;
-  position: relative; overflow: hidden;
-}
-.auth-brand::before {
-  content: ''; position: absolute; top: -50%; right: -50%;
-  width: 100%; height: 100%; background: radial-gradient(circle, rgba(0,169,157,0.12) 0%, transparent 70%);
-  border-radius: 50%;
-}
-.auth-brand::after {
-  content: ''; position: absolute; bottom: -30%; left: -30%;
-  width: 80%; height: 80%; background: radial-gradient(circle, rgba(8,113,196,0.1) 0%, transparent 70%);
-  border-radius: 50%;
-}
-.auth-brand-content { position: relative; z-index: 1; max-width: 420px; }
-.auth-brand-logo { font-size: 2.5rem; font-weight: 800; margin-bottom: 1.5rem; }
-.auth-brand-title { color: #fff; font-size: 1.75rem; margin-bottom: 1rem; line-height: 1.3; }
-.auth-brand-desc { color: rgba(255,255,255,0.7); font-size: 1rem; line-height: 1.6; margin-bottom: 2rem; }
-.auth-brand-features { display: flex; flex-direction: column; gap: 12px; }
-.auth-brand-feature { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,0.85); font-size: 0.9375rem; font-weight: 500; }
-.auth-feature-icon { font-size: 1.25rem; }
-
-.auth-form-side {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  padding: 2rem; background: var(--bg-page);
-}
-.auth-card { width: 100%; max-width: 420px; }
-.auth-title { font-size: 1.5rem; font-weight: 700; color: var(--text-heading); margin-bottom: 6px; }
-.auth-subtitle { font-size: 0.9375rem; color: var(--text-muted); margin-bottom: 1.75rem; }
-
-.auth-google-btn {
-  width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md);
-  background: var(--bg-card); cursor: pointer; font-size: 0.875rem; font-weight: 500;
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  font-family: var(--font-sans); transition: all var(--transition-fast); color: var(--text-body);
-}
-.auth-google-btn:hover { border-color: var(--action-blue); box-shadow: var(--shadow-sm); }
-
-.auth-divider {
-  position: relative; text-align: center; margin: 1.5rem 0; border-top: 1px solid var(--border);
-}
-.auth-divider span {
-  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
-  background: var(--bg-page); padding: 0 14px; font-size: 0.75rem; color: var(--text-muted);
-}
-
-.auth-form { display: flex; flex-direction: column; gap: 4px; }
-.auth-footer-text { margin-top: 1.5rem; font-size: 0.875rem; text-align: center; color: var(--text-muted); }
-
-@media (max-width: 900px) {
-  .auth-page { flex-direction: column; }
-  .auth-brand { padding: 2rem; min-height: auto; }
-  .auth-brand-content { max-width: 100%; }
-  .auth-brand-title { font-size: 1.375rem; }
-  .auth-brand-features { flex-direction: row; flex-wrap: wrap; gap: 8px; }
-  .auth-brand-feature { font-size: 0.8125rem; }
-  .auth-form-side { padding: 1.5rem; }
-}
-`;

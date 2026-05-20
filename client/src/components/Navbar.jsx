@@ -3,6 +3,7 @@ import { useAuth }                     from '../context/AuthContext';
 import { useEffect, useState, useRef } from 'react';
 import { io }                          from 'socket.io-client';
 import { API_URL }                     from '../config';
+import Logo                            from './Logo';
 
 export default function Navbar() {
   const { user, logout, token } = useAuth();
@@ -142,8 +143,7 @@ export default function Navbar() {
       <div className="rb-nav-inner">
 
         <div className="rb-nav-brand" onClick={() => navigate('/dashboard')}>
-          <span className="rb-nav-logo-rev">Rev</span>
-          <span className="rb-nav-logo-bid">Bid</span>
+          <Logo size="sm" variant="light" />
         </div>
 
         {/* Hamburger */}

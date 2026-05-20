@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import Logo from '../components/Logo';
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -8,10 +9,7 @@ export default function LandingPage() {
       {/* Nav */}
       <nav className="l-nav">
         <div className="l-nav-inner">
-          <div className="l-nav-brand">
-            <span style={{ color: 'var(--primary-navy)' }}>Rev</span>
-            <span style={{ color: 'var(--bid-teal)' }}>Bid</span>
-          </div>
+          <Logo size="md" onClick={() => navigate('/')} />
           <div className="l-nav-actions">
             <button className="btn btn-ghost" onClick={() => navigate('/login')}>Autentificare</button>
             <button className="btn btn-primary" onClick={() => navigate('/register')}>Incepe gratuit</button>
@@ -133,8 +131,8 @@ export default function LandingPage() {
         <div className="l-section-inner">
           <div className="l-footer-top">
             <div>
-              <div className="l-nav-brand" style={{ marginBottom: '8px' }}>
-                <span style={{ color: '#fff' }}>Rev</span><span style={{ color: 'var(--bid-teal)' }}>Bid</span>
+              <div style={{ marginBottom: '10px' }}>
+                <Logo size="md" variant="light" />
               </div>
               <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', maxWidth: '280px' }}>
                 Platforma de licitatii inverse pentru achizitii inteligente.
