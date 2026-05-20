@@ -16,8 +16,9 @@ router.get('/', async (req, res) => {
     const { category, status } = req.query;
     const filter = {};
     if (category) filter.category = category;
-    if (status)   filter.status   = status;
-    else          filter.status   = 'active';
+    // status=all → niciun filtru; status absent → default active; altfel filtru exact
+    if (status && status !== 'all') filter.status = status;
+    else if (!status)               filter.status = 'active';
 
     const auctions = await Auction.find(filter)
       .populate('buyer', 'firstName lastName companyName')

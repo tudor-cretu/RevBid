@@ -15,6 +15,7 @@ import Support           from './pages/Support';
 import PublicProfile     from './pages/PublicProfile';
 import Messages          from './pages/Messages';
 import LandingPage       from './pages/LandingPage';
+import MyBids            from './pages/MyBids';
 import './App.css';
 
 function ProtectedRoute({ children }) {
@@ -48,6 +49,7 @@ function App() {
           <Route path="/auction/create"              element={<ProtectedRoute><CreateAuction /></ProtectedRoute>} />
           <Route path="/auction/:id"                 element={<ProtectedRoute><AuctionDetail /></ProtectedRoute>} />
           <Route path="/auction/:id/edit-request"    element={<ProtectedRoute><AuctionRequestForm /></ProtectedRoute>} />
+          <Route path="/my-bids"                     element={<ProtectedRoute><MyBids /></ProtectedRoute>} />
           <Route path="/admin"                       element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
           <Route path="/settings"       element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/support"        element={<ProtectedRoute><Support /></ProtectedRoute>} />

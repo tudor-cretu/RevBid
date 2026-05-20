@@ -1,4 +1,4 @@
-import { useNavigate }                 from 'react-router-dom';
+import { useNavigate, useLocation }          from 'react-router-dom';
 import { useAuth }                     from '../context/AuthContext';
 import { useEffect, useState, useRef } from 'react';
 import { io }                          from 'socket.io-client';
@@ -7,6 +7,7 @@ import { API_URL }                     from '../config';
 export default function Navbar() {
   const { user, logout, token } = useAuth();
   const navigate                = useNavigate();
+  const location                = useLocation();
 
   const [notifications, setNotifications] = useState([]);
   const [showDropdown,  setShowDropdown]  = useState(false);
@@ -153,7 +154,15 @@ export default function Navbar() {
         </button>
 
         <div className={`rb-nav-right ${mobileOpen ? 'open' : ''}`}>
-          <button className="rb-nav-link" onClick={() => { navigate('/dashboard'); setMobileOpen(false); }}>Dashboard</button>
+          <button className="rb-nav-link" onClick={() => { navigate('/dashboard'); setMobileOpen(false); }}>Licitații</button>
+          {user.role === 'supplier' && (
+            <button
+              className={`rb-nav-link ${location.pathname === '/my-bids' ? 'rb-nav-link-active' : ''}`}
+              onClick={() => { navigate('/my-bids'); setMobileOpen(false); }}
+            >
+              Oferte
+            </button>
+          )}
           {user.role === 'admin' && (
             <button className="rb-nav-link" onClick={() => { navigate('/admin'); setMobileOpen(false); }}>Admin</button>
           )}
@@ -265,6 +274,7 @@ const navbarCSS = `
   font-family: var(--font-sans);
 }
 .rb-nav-link:hover { color: #fff; background: rgba(255,255,255,0.1); }
+.rb-nav-link-active { color: #fff !important; background: rgba(0,169,157,0.3) !important; border-bottom: 2px solid var(--bid-teal); }
 
 .rb-nav-bell-wrap { position: relative; }
 .rb-nav-bell {

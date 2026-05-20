@@ -33,6 +33,7 @@ export default function BuyerDashboard() {
     active:    allAuctions.filter(a => a.status === 'active').length,
     closed:    allAuctions.filter(a => a.status === 'closed').length,
     cancelled: allAuctions.filter(a => a.status === 'cancelled').length,
+    draft:     allAuctions.filter(a => a.status === 'draft').length,
   }), [allAuctions]);
 
   useEffect(() => { fetchMyAuctions(); }, []);
@@ -40,8 +41,8 @@ export default function BuyerDashboard() {
   const fetchMyAuctions = async () => {
     setLoading(true);
     try {
-      /* Fetch fără filtru de status pentru a putea comuta între taburi instant */
-      const res  = await fetch(`${API_URL}/api/auctions`, { headers: { Authorization: `Bearer ${token}` } });
+      /* status=all → returnează toate statusurile de la server */
+      const res  = await fetch(`${API_URL}/api/auctions?status=all`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       /* Filtrează doar licitațiile proprii */
       setAllAuctions(data.filter(a => a.buyer?._id === user.id || a.buyer === user.id));
@@ -62,8 +63,8 @@ export default function BuyerDashboard() {
         {/* Header */}
         <div className="page-header">
           <div>
-            <h1 className="page-title">Bună, {user.firstName}! 👋</h1>
-            <p className="page-subtitle">Gestionează licitațiile tale</p>
+            <h1 className="page-title">Licitațiile tale</h1>
+            <p className="page-subtitle">Gestionează licitațiile active, urmărește ofertele și selectează cel mai bun furnizor.</p>
           </div>
           <button className="btn btn-primary btn-lg" onClick={() => navigate('/auction/create')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -74,7 +75,7 @@ export default function BuyerDashboard() {
         </div>
 
         {/* Stats */}
-        <div className="stats-grid stats-grid-3">
+        <div className="stats-grid stats-grid-4">
           <div className="stat-card">
             <p className="stat-value" style={{ color: 'var(--bid-teal)' }}>{counts.active}</p>
             <p className="stat-label">Active</p>
@@ -86,6 +87,10 @@ export default function BuyerDashboard() {
           <div className="stat-card">
             <p className="stat-value" style={{ color: 'var(--warning-amber)' }}>{counts.cancelled}</p>
             <p className="stat-label">Anulate</p>
+          </div>
+          <div className="stat-card">
+            <p className="stat-value" style={{ color: 'var(--text-muted)' }}>{counts.draft}</p>
+            <p className="stat-label">Draft</p>
           </div>
         </div>
 

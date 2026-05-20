@@ -12,7 +12,7 @@ export default function MapView({ location }) {
   if (!location?.lat || !location?.lng) return null;
 
   return (
-    <div>
+    <div style={{ isolation: 'isolate' }}>
       <MapContainer
         center={[location.lat, location.lng]}
         zoom={13}

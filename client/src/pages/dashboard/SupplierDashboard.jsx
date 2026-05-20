@@ -8,44 +8,60 @@ import { API_URL }                      from '../../config';
 export default function SupplierDashboard() {
   const { user, token }         = useAuth();
   const navigate                = useNavigate();
-  const [auctions, setAuctions] = useState([]);
-  const [myBids, setMyBids]     = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [tab, setTab]           = useState('browse');
+  const [allAuctions, setAllAuctions] = useState([]);
+  const [myBidCount,  setMyBidCount]  = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [statusFilter, setStatusFilter] = useState('active');
 
-  /* ── Filtre (doar pentru tab-ul browse) ── */
-  const filters       = useAuctionFilters(auctions);
-  const { filtered }  = filters;
+  /* Licitațiile filtrate după status pill */
+  const auctionsByStatus = useMemo(
+    () => statusFilter === 'all'
+      ? allAuctions
+      : allAuctions.filter(a => a.status === statusFilter),
+    [allAuctions, statusFilter]
+  );
 
-  /* Categorii disponibile din datele reale */
+  /* Hook filtre — search/categorie/preț pe lista curentă */
+  const filters      = useAuctionFilters(auctionsByStatus);
+  const { filtered } = filters;
+
+  /* Categorii disponibile */
   const availableCategories = useMemo(() => {
-    const cats = [...new Set(auctions.map(a => a.category).filter(Boolean))];
+    const cats = [...new Set(allAuctions.map(a => a.category).filter(Boolean))];
     return cats.sort();
-  }, [auctions]);
+  }, [allAuctions]);
+
+  /* Statistici */
+  const counts = useMemo(() => ({
+    all:       allAuctions.length,
+    active:    allAuctions.filter(a => a.status === 'active').length,
+    closed:    allAuctions.filter(a => a.status === 'closed').length,
+    cancelled: allAuctions.filter(a => a.status === 'cancelled').length,
+  }), [allAuctions]);
 
   useEffect(() => {
-    if (tab === 'browse') fetchActiveAuctions();
-    if (tab === 'mybids') fetchMyBids();
-  }, [tab]);
+    fetchAllAuctions();
+    // Badge count pentru "Ofertele mele"
+    fetch(`${API_URL}/api/bids/my`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setMyBidCount(Array.isArray(d) ? d.length : null))
+      .catch(() => {});
+  }, []);
 
-  const fetchActiveAuctions = async () => {
+  const fetchAllAuctions = async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`${API_URL}/api/auctions?status=active`);
+      /* status=all → returnează active + closed + cancelled */
+      const res  = await fetch(`${API_URL}/api/auctions?status=all`);
       const data = await res.json();
-      setAuctions(data);
+      setAllAuctions(Array.isArray(data) ? data : []);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
 
-  const fetchMyBids = async () => {
-    setLoading(true);
-    try {
-      const res  = await fetch(`${API_URL}/api/bids/my`, { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      setMyBids(data);
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+  const handleStatusChange = s => {
+    setStatusFilter(s);
+    filters.clearAll();
   };
 
   return (
@@ -55,99 +71,100 @@ export default function SupplierDashboard() {
         {/* Header */}
         <div className="page-header">
           <div>
-            <h1 className="page-title">Buna, {user.firstName}! 👋</h1>
-            <p className="page-subtitle">{user.companyName || 'Furnizor RevBid'}</p>
+            <h1 className="page-title">Oportunități de ofertare</h1>
+            <p className="page-subtitle">Explorează licitațiile active și depune oferta pentru cel mai competitiv preț.</p>
+          </div>
+          <button className="btn btn-outline" onClick={() => navigate('/my-bids')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            📋 Ofertele mele
+            {myBidCount !== null && myBidCount > 0 && (
+              <span style={{ background: 'var(--bid-teal)', color: '#fff', fontSize: '0.6875rem', fontWeight: 700, borderRadius: '999px', padding: '1px 7px' }}>{myBidCount}</span>
+            )}
+          </button>
+        </div>
+
+        {/* Stats */}
+        <div className="stats-grid stats-grid-4">
+          <div className="stat-card">
+            <p className="stat-value" style={{ color: 'var(--bid-teal)' }}>{counts.active}</p>
+            <p className="stat-label">Licitații active</p>
+          </div>
+          <div className="stat-card">
+            <p className="stat-value" style={{ color: 'var(--action-blue)' }}>{counts.closed}</p>
+            <p className="stat-label">Încheiate</p>
+          </div>
+          <div className="stat-card">
+            <p className="stat-value" style={{ color: 'var(--text-muted)' }}>{counts.cancelled}</p>
+            <p className="stat-label">Anulate</p>
+          </div>
+          <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/my-bids')}>
+            <p className="stat-value" style={{ color: 'var(--primary-navy)' }}>{myBidCount ?? '—'}</p>
+            <p className="stat-label">Ofertele mele</p>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="tabs">
-          <button className={`tab-btn ${tab === 'browse' ? 'active' : ''}`} onClick={() => setTab('browse')}>
-            Licitații active
-          </button>
-          <button className={`tab-btn ${tab === 'mybids' ? 'active' : ''}`} onClick={() => setTab('mybids')}>
-            Ofertele mele
-          </button>
+        {/* Status pills */}
+        <div className="filter-pills">
+          {[
+            { key: 'active',    label: 'Active' },
+            { key: 'closed',    label: 'Încheiate' },
+            { key: 'cancelled', label: 'Anulate' },
+            { key: 'all',       label: 'Toate' },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              className={`filter-pill ${statusFilter === key ? 'active' : ''}`}
+              onClick={() => handleStatusChange(key)}
+            >
+              {label}
+              <span style={{ marginLeft: 5, opacity: 0.65, fontSize: '0.75em' }}>
+                {key === 'all' ? counts.all : counts[key]}
+              </span>
+            </button>
+          ))}
         </div>
 
-        {/* ── Tab: Browse ── */}
-        {tab === 'browse' && (
-          <>
-            {/* Bara de search + filtre */}
-            {!loading && auctions.length > 0 && (
-              <FilterBar
-                filters={filters}
-                total={auctions.length}
-                availableCategories={availableCategories}
-              />
-            )}
-
-            {loading ? (
-              <div className="loading-state">
-                <div className="spinner" />
-                <p className="loading-text" style={{ padding: '1rem 0' }}>Se încarcă licitațiile...</p>
-              </div>
-            ) : auctions.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-state-icon">🔍</div>
-                <p className="empty-state-title">Nu sunt licitații active momentan</p>
-                <p className="empty-state-text">Revino mai târziu pentru a vedea noi oportunități de ofertare.</p>
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-state-icon">🔎</div>
-                <p className="empty-state-title">Niciun rezultat pentru filtrele selectate</p>
-                <p className="empty-state-text">Încearcă să modifici criteriile de căutare sau să ștergi unele filtre.</p>
-                <button className="btn btn-outline" onClick={filters.clearAll}>
-                  Șterge toate filtrele
-                </button>
-              </div>
-            ) : (
-              <div className="auction-grid">
-                {filtered.map(a => <AuctionCard key={a._id} auction={a} />)}
-              </div>
-            )}
-          </>
+        {/* Bara search + filtre */}
+        {!loading && auctionsByStatus.length > 0 && (
+          <FilterBar
+            filters={filters}
+            total={auctionsByStatus.length}
+            availableCategories={availableCategories}
+          />
         )}
 
-        {/* ── Tab: Ofertele mele ── */}
-        {tab === 'mybids' && (
-          loading ? (
-            <p className="loading-text">Se încarcă...</p>
-          ) : myBids.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">📝</div>
-              <p className="empty-state-title">Nu ai depus nicio ofertă încă</p>
-              <p className="empty-state-text">Explorează licitațiile active și depune prima ta ofertă.</p>
-              <button className="btn btn-primary" onClick={() => setTab('browse')}>
-                Vezi licitații active
-              </button>
-            </div>
-          ) : (
-            <div className="auction-grid">
-              {myBids.map(bid => (
-                <div
-                  key={bid._id}
-                  className="card card-hover"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/auction/${bid.auction?._id}`)}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-heading)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                      {bid.auction?.title}
-                    </span>
-                    <span className={`badge ${bid.isWinning ? 'badge-solid-green' : 'badge-solid-amber'}`} style={{ marginLeft: '8px' }}>
-                      {bid.isWinning ? '🏆 Câștigător' : 'Supralicitat'}
-                    </span>
-                  </div>
-                  <p style={{ fontSize: '1.375rem', fontWeight: 700, color: 'var(--bid-teal)', margin: '0 0 4px' }}>{bid.amount} RON</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {new Date(bid.createdAt).toLocaleDateString('ro-RO')}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )
+        {/* Rezultate */}
+        {loading ? (
+          <div className="loading-state">
+            <div className="spinner" />
+            <p className="loading-text" style={{ padding: '1rem 0' }}>Se încarcă licitațiile...</p>
+          </div>
+        ) : auctionsByStatus.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">🔍</div>
+            <p className="empty-state-title">
+              {statusFilter === 'active'
+                ? 'Nu sunt licitații active momentan'
+                : statusFilter === 'closed'
+                  ? 'Nicio licitație încheiată'
+                  : statusFilter === 'cancelled'
+                    ? 'Nicio licitație anulată'
+                    : 'Nicio licitație disponibilă'}
+            </p>
+            <p className="empty-state-text">Revino mai târziu pentru noi oportunități.</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">🔎</div>
+            <p className="empty-state-title">Niciun rezultat pentru filtrele selectate</p>
+            <p className="empty-state-text">Încearcă să modifici criteriile de căutare sau să ștergi unele filtre.</p>
+            <button className="btn btn-outline" onClick={filters.clearAll}>
+              Șterge toate filtrele
+            </button>
+          </div>
+        ) : (
+          <div className="auction-grid">
+            {filtered.map(a => <AuctionCard key={a._id} auction={a} />)}
+          </div>
         )}
       </div>
     </div>
