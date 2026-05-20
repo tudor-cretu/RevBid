@@ -7,6 +7,7 @@ import { API_URL }                     from '../config';
 import AuctionChatBox                  from '../components/AuctionChatBox';
 import MapView                         from '../components/MapView';
 import AuctionEndModal                 from '../components/AuctionEndModal';
+import AuctionOutcome                  from '../components/AuctionOutcome';
 import { fireConfetti }                from '../utils/confetti';
 
 const fmtNum = n => (n === null || n === undefined ? '—' : Number(n).toLocaleString('ro-RO'));
@@ -51,6 +52,10 @@ export default function AuctionDetail() {
   // Pop-up live la finalizarea licitației
   const [endModal,     setEndModal]     = useState(null);
   const endHandledRef = useRef(false);
+
+  // Invoice / Rezumat tranzacție
+  const [invoiceMeta,        setInvoiceMeta]        = useState(null);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   // Ref cu date "live" — handler-ul socket citește mereu valorile curente
   const liveRef = useRef({ userId: null, bids: [], buyerId: null });
 
@@ -67,6 +72,53 @@ export default function AuctionDetail() {
     if (user?.role === 'buyer') fetchMyRequests();
     return () => socketRef.current?.disconnect();
   }, [id]);
+
+  /* Când licitația este închisă, încărcăm metadata documentului de tranzacție.
+     Endpoint-ul răspunde doar pentru buyer / câștigător / admin. */
+  useEffect(() => {
+    if (auction?.status === 'closed') fetchInvoiceMeta();
+  }, [auction?.status]);
+
+  const fetchInvoiceMeta = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/invoices/auction/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setInvoiceMeta(await res.json());
+    } catch {}
+  };
+
+  const downloadInvoice = async () => {
+    setDownloadingInvoice(true);
+    try {
+      const res = await fetch(`${API_URL}/api/invoices/auction/${id}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) { setRequestToast('error:Nu s-a putut descărca documentul.'); return; }
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `RevBid-${invoiceMeta?.invoiceNumber || 'rezumat-tranzactie'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setRequestToast('error:Eroare la descărcarea documentului.');
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
+
+  const messageCounterparty = (outcomeRole) => {
+    const cp = invoiceMeta?.counterparty;
+    if (!cp?._id) { navigate('/messages'); return; }
+    const prefill = outcomeRole === 'buyer'
+      ? `Salut! Felicitări pentru oferta câștigătoare la licitația "${auction.title}". Aș vrea să discutăm pașii următori.`
+      : `Salut! Am câștigat licitația "${auction.title}". Sunt disponibil să discutăm detaliile pentru livrare/execuție.`;
+    navigate(`/messages?to=${cp._id}&auction=${id}&prefill=${encodeURIComponent(prefill)}`);
+  };
 
   useEffect(() => {
     if (!auction?.deadline) return;
@@ -189,6 +241,7 @@ export default function AuctionDetail() {
         winnerName: payload.winnerName,
         bidCount:   payload.bidCount,
         myBid:      myBidObj?.amount ?? null,
+        hasInvoice: !!payload.hasInvoice,
       });
 
       if (variant === 'won') fireConfetti();
@@ -241,6 +294,17 @@ export default function AuctionDetail() {
   const editPending   = myRequests.find(r => r.type === 'edit'   && r.status === 'pending');
   const deletePending = myRequests.find(r => r.type === 'delete' && r.status === 'pending');
   const rejectedReq   = myRequests.find(r => r.status === 'rejected');
+
+  /* ── Rezultat post-licitație ── */
+  const isClosed = auction.status === 'closed';
+  const didBid   = bids.some(b => (b.supplier?._id || b.supplier) === user?.id);
+  const isWinner = isClosed && !!bestBid && bestBid.supplier?._id === user?.id;
+  let outcomeRole = null;
+  if (isClosed && bestBid) {
+    if (isBuyer)       outcomeRole = 'buyer';
+    else if (isWinner) outcomeRole = 'winner';
+    else if (didBid)   outcomeRole = 'loser';
+  }
 
   /* ── Auction intelligence ── */
   const insights = [];
@@ -348,6 +412,12 @@ export default function AuctionDetail() {
             winnerName={endModal.winnerName}
             bidCount={endModal.bidCount}
             myBid={endModal.myBid}
+            hasInvoice={endModal.hasInvoice}
+            downloadingInvoice={downloadingInvoice}
+            onDownloadInvoice={downloadInvoice}
+            onMessage={(endModal.variant === 'won' || endModal.variant === 'buyer')
+              ? () => { setEndModal(null); messageCounterparty(endModal.variant === 'won' ? 'winner' : 'buyer'); }
+              : undefined}
             onClose={() => setEndModal(null)}
             onExplore={() => { setEndModal(null); navigate('/dashboard'); }}
           />
@@ -580,8 +650,18 @@ export default function AuctionDetail() {
               </div>
             )}
 
-            {/* Licitație închisă */}
-            {!isActive && (
+            {/* Rezultat post-licitație — documente, pași următori, contact */}
+            {outcomeRole ? (
+              <AuctionOutcome
+                role={outcomeRole}
+                auction={auction}
+                invoiceMeta={invoiceMeta}
+                counterparty={invoiceMeta?.counterparty}
+                onDownloadInvoice={downloadInvoice}
+                downloadingInvoice={downloadingInvoice}
+                onMessage={() => messageCounterparty(outcomeRole)}
+              />
+            ) : !isActive && (
               <div className="card" style={{ textAlign: 'center', background: 'var(--ice-blue)' }}>
                 <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🔒</div>
                 <p style={{ fontWeight: 600, color: 'var(--text-heading)', marginBottom: '4px' }}>

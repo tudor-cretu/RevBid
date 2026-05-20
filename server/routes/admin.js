@@ -4,6 +4,7 @@ const router         = require('express').Router();
 const User           = require('../models/User');
 const Auction        = require('../models/Auction');
 const Bid            = require('../models/Bid');
+const Invoice        = require('../models/Invoice');
 const authMiddleware = require('../middleware/auth');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
@@ -122,6 +123,27 @@ router.put('/auctions/:id/close', authMiddleware, adminOnly, async (req, res) =>
       finalizeAuctionNotifications(req.app.get('io'), auction._id);
     }
     return;
+  } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
+    res.status(500).json({ message: 'Eroare server', error: err.message });
+  }
+});
+
+/* ── GET /api/admin/invoices ─────────────────────────────────── */
+router.get('/invoices', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const invoices = await Invoice.find()
+      .populate('buyer',    'firstName lastName')
+      .populate('supplier', 'firstName lastName')
+      .populate('auction',  'title')
+      .sort({ createdAt: -1 });
+
+    logger.fromReq(req).audit(EVENTS.INVOICE.ADMIN_LIST,
+      `Admin a listat documentele de tranzacție (${invoices.length})`, {
+        metadata: { count: invoices.length },
+      });
+
+    res.json(invoices);
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });

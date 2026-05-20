@@ -35,9 +35,14 @@ const VARIANTS = {
   },
 };
 
-export default function AuctionEndModal({ variant = 'generic', finalPrice = null, winnerName, bidCount = 0, myBid = null, onClose, onExplore }) {
+export default function AuctionEndModal({
+  variant = 'generic', finalPrice = null, winnerName, bidCount = 0, myBid = null,
+  hasInvoice = false, downloadingInvoice = false, onDownloadInvoice, onMessage,
+  onClose, onExplore,
+}) {
   const cfg = VARIANTS[variant] || VARIANTS.generic;
   const primaryRef = useRef(null);
+  const showDeal   = variant === 'won' || variant === 'buyer';
 
   useEffect(() => {
     primaryRef.current?.focus();
@@ -112,6 +117,16 @@ export default function AuctionEndModal({ variant = 'generic', finalPrice = null
         )}
 
         <div className="aem-actions">
+          {showDeal && hasInvoice && onDownloadInvoice && (
+            <button className="aem-btn-soft" onClick={onDownloadInvoice} disabled={downloadingInvoice}>
+              {downloadingInvoice ? 'Se descarcă…' : '⬇ Descarcă rezumatul (PDF)'}
+            </button>
+          )}
+          {showDeal && onMessage && (
+            <button className="aem-btn-soft" onClick={onMessage}>
+              💬 Trimite mesaj {variant === 'won' ? 'cumpărătorului' : 'furnizorului'}
+            </button>
+          )}
           <button
             ref={primaryRef}
             className="aem-btn-primary"
@@ -189,6 +204,14 @@ const aemCSS = `
   font-family: var(--font-sans); transition: all var(--transition-fast);
 }
 .aem-btn-ghost:hover { background: var(--ice-blue); color: var(--text-body); }
+.aem-btn-soft {
+  width: 100%; padding: 10px 18px; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: var(--ice-blue);
+  color: var(--primary-navy); font-size: 0.8125rem; font-weight: 700; cursor: pointer;
+  font-family: var(--font-sans); transition: all var(--transition-fast);
+}
+.aem-btn-soft:hover:not(:disabled) { border-color: var(--bid-teal); color: var(--bid-teal); }
+.aem-btn-soft:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 480px) {
   .aem-card { padding: 1.75rem 1.25rem 1.5rem; }
 }

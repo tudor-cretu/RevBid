@@ -60,6 +60,17 @@ const EVENTS = {
     POPUP_EMITTED:      'NOTIFY_POPUP_EMITTED',
   },
 
+  /* ── Invoice / Rezumat tranzacție ── */
+  INVOICE: {
+    GENERATED:          'INVOICE_GENERATED',
+    GENERATE_FAILED:    'INVOICE_GENERATE_FAILED',
+    DOWNLOADED:         'INVOICE_DOWNLOADED',
+    EMAILED:            'INVOICE_EMAILED',
+    ACCESS_DENIED:      'INVOICE_ACCESS_DENIED',
+    REGENERATED:        'INVOICE_REGENERATED',
+    ADMIN_LIST:         'INVOICE_ADMIN_LIST',
+  },
+
   /* ── Oferte ── */
   BID: {
     CREATED:            'BID_CREATED',

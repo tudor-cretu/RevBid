@@ -17,8 +17,11 @@
 const Auction      = require('../models/Auction');
 const Bid          = require('../models/Bid');
 const Subscription = require('../models/Subscription');
+const Invoice      = require('../models/Invoice');
+const Counter      = require('../models/Counter');
 const sendMail     = require('../config/mailer');
 const notifyUser   = require('../utils/notify');
+const { buildInvoicePdf } = require('../utils/invoiceDoc');
 const logger       = require('../utils/logger');
 const EVENTS       = require('../utils/events');
 const {
@@ -29,18 +32,59 @@ const {
 } = require('../config/emailTemplates');
 
 /* Trimite un email și loghează rezultatul (fără date sensibile). */
-async function deliverEmail(auctionId, email, template, role) {
-  if (!email) return;
-  const ok = await sendMail({ to: email, subject: template.subject, html: template.html });
+async function deliverEmail(auctionId, email, template, role, attachments) {
+  if (!email) return false;
+  const ok = await sendMail({ to: email, subject: template.subject, html: template.html, attachments });
   if (ok) {
     logger.info(EVENTS.NOTIFY.EMAIL_SENT, `Email finalizare trimis (${role})`, {
-      entityType: 'auction', entityId: auctionId, metadata: { role },
-    });
+      entityType: 'auction', entityId: auctionId, metadata: { role, withInvoice: !!attachments } });
   } else {
     logger.warn(EVENTS.NOTIFY.EMAIL_FAILED, `Email finalizare eșuat (${role})`, {
-      entityType: 'auction', entityId: auctionId, metadata: { role },
-    });
+      entityType: 'auction', entityId: auctionId, metadata: { role } });
   }
+  return ok;
+}
+
+const fullName = u => `${u?.firstName || ''} ${u?.lastName || ''}`.trim();
+
+/* Creează (sau returnează, dacă există deja) invoice-ul unei licitații. */
+async function getOrCreateInvoice(auction, winningBid) {
+  const existing = await Invoice.findOne({ auction: auction._id });
+  if (existing) return existing;
+
+  const year = new Date().getFullYear();
+  const seq  = await Counter.next(`invoice-${year}`);
+  const invoiceNumber = `RB-TS-${year}-${String(seq).padStart(6, '0')}`;
+
+  const supplier   = winningBid.supplier;
+  const buyer      = auction.buyer;
+  const buyerLabel = fullName(buyer)    + (buyer?.companyName    ? ` (${buyer.companyName})`    : '');
+  const suppLabel  = fullName(supplier) + (supplier?.companyName ? ` (${supplier.companyName})` : '');
+
+  const invoice = await Invoice.create({
+    invoiceNumber,
+    auction:      auction._id,
+    buyer:        buyer?._id || auction.buyer,
+    supplier:     supplier._id,
+    winningBid:   winningBid._id,
+    amount:       winningBid.amount,
+    currency:     'RON',
+    auctionTitle: auction.title,
+    category:     auction.category,
+    description:  auction.description,
+    buyerName:    buyerLabel || '—',
+    supplierName: suppLabel  || '—',
+    deadline:     auction.deadline,
+    finalizedAt:  auction.endedNotifiedAt || new Date(),
+    status:       'generated',
+  });
+
+  logger.audit(EVENTS.INVOICE.GENERATED,
+    `Rezumat tranzacție generat: ${invoiceNumber}`, {
+      entityType: 'invoice', entityId: invoice._id.toString(),
+      metadata: { auctionId: auction._id.toString(), amount: invoice.amount } });
+
+  return invoice;
 }
 
 /**
@@ -72,7 +116,7 @@ async function finalizeAuctionNotifications(io, auctionId) {
        Folosim flag-ul `isWinning` menținut la fiecare bid; fallback
        pe minimul efectiv dacă flag-ul lipsește.                   */
     const allBids = await Bid.find({ auction: auctionId })
-      .populate('supplier', 'firstName lastName email')
+      .populate('supplier', 'firstName lastName email companyName')
       .sort({ amount: 1 });
 
     let winningBid = allBids.find(b => b.isWinning) || null;
@@ -93,11 +137,33 @@ async function finalizeAuctionNotifications(io, auctionId) {
         : `Licitația "${auction.title}" s-a încheiat fără oferte`,
       { entityType: 'auction', entityId: idStr, metadata: { winnerId, finalPrice, bidCount } });
 
+    /* ── Invoice / Rezumat tranzacție — doar dacă există câștigător ──
+       Nu se generează pentru licitații fără oferte sau anulate.      */
+    let invoice       = null;
+    let pdfAttachment = null;
+    if (winningBid?.supplier && winnerId && auction.status === 'closed') {
+      try {
+        invoice = await getOrCreateInvoice(auction, winningBid);
+        const pdf = buildInvoicePdf(invoice);
+        pdfAttachment = [{
+          filename:    `RevBid-${invoice.invoiceNumber}.pdf`,
+          content:     pdf,
+          contentType: 'application/pdf',
+        }];
+      } catch (e) {
+        logger.error(EVENTS.INVOICE.GENERATE_FAILED,
+          `Generare invoice eșuată pentru "${auction.title}": ${e.message}`,
+          { entityType: 'auction', entityId: idStr, errorMessage: e.message, stack: e.stack });
+        invoice = null; pdfAttachment = null;
+      }
+    }
+    const hasInvoice = !!invoice;
+
     /* ── Pop-up live — emis imediat, înainte de email-uri (instant pe pagină) ── */
     const payload = {
       auctionId: idStr,
       status:    auction.status,
-      finalPrice, winnerId, winnerName, bidCount, buyerId,
+      finalPrice, winnerId, winnerName, bidCount, buyerId, hasInvoice,
     };
     io.to(idStr).emit('auction_finalized', payload);
     /* Backward-compat — handler-ul existent care marca licitația închisă */
@@ -128,13 +194,15 @@ async function finalizeAuctionNotifications(io, auctionId) {
         link,
       });
       inApp++;
-      await deliverEmail(idStr, winningBid.supplier.email, auctionWonTemplate({
+      const ok = await deliverEmail(idStr, winningBid.supplier.email, auctionWonTemplate({
         firstName:    winningBid.supplier.firstName,
         auctionTitle: auction.title,
         finalPrice,
-        buyerName:    `${auction.buyer?.firstName || ''} ${auction.buyer?.lastName || ''}`.trim(),
+        buyerName:    fullName(auction.buyer),
         auctionId:    idStr,
-      }), 'winner');
+        hasInvoice,
+      }), 'winner', pdfAttachment);
+      if (invoice && ok) invoice.emailedAtSupplier = new Date();
     }
 
     /* 2. Buyer */
@@ -148,12 +216,27 @@ async function finalizeAuctionNotifications(io, auctionId) {
         link,
       });
       inApp++;
-      await deliverEmail(idStr, auction.buyer.email, auctionEndedBuyerTemplate({
+      const ok = await deliverEmail(idStr, auction.buyer.email, auctionEndedBuyerTemplate({
         firstName:    auction.buyer.firstName,
         auctionTitle: auction.title,
         finalPrice, winnerName, bidCount,
         auctionId:    idStr,
-      }), 'buyer');
+        hasInvoice,
+      }), 'buyer', pdfAttachment);
+      if (invoice && ok) invoice.emailedAtBuyer = new Date();
+    }
+
+    /* Persistăm marcajele de email pe invoice */
+    if (invoice) {
+      invoice.status = (invoice.emailedAtBuyer && invoice.emailedAtSupplier) ? 'sent' : 'generated';
+      try { await invoice.save(); } catch (e) {
+        logger.warn(EVENTS.INVOICE.GENERATE_FAILED, `Salvare status invoice eșuată: ${e.message}`,
+          { entityType: 'invoice', entityId: invoice._id.toString() });
+      }
+      logger.audit(EVENTS.INVOICE.EMAILED,
+        `Invoice ${invoice.invoiceNumber} — distribuit prin email`, {
+          entityType: 'invoice', entityId: invoice._id.toString(),
+          metadata: { emailedBuyer: !!invoice.emailedAtBuyer, emailedSupplier: !!invoice.emailedAtSupplier } });
     }
 
     /* 3. Furnizori care au licitat, dar nu au câștigat */

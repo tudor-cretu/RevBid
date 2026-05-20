@@ -10,9 +10,10 @@ const transporter = nodemailer.createTransport({
 
 /**
  * Trimite un email.
+ * @param {{to:string, subject:string, html:string, attachments?:Array}} opts
  * @returns {Promise<boolean>} true dacă a fost trimis cu succes, false la eroare.
  */
-const sendMail = async ({ to, subject, html }) => {
+const sendMail = async ({ to, subject, html, attachments }) => {
   if (!to) return false;
   try {
     await transporter.sendMail({
@@ -20,6 +21,7 @@ const sendMail = async ({ to, subject, html }) => {
       to,
       subject,
       html,
+      ...(attachments && attachments.length ? { attachments } : {}),
     });
     console.log(`Email trimis catre ${to}`);
     return true;

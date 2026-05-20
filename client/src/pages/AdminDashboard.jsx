@@ -158,6 +158,7 @@ export default function AdminDashboard() {
   const [users,    setUsers]    = useState([]);
   const [auctions, setAuctions] = useState([]);
   const [requests, setRequests] = useState([]);
+  const [invoices, setInvoices] = useState([]);
   const [loading,  setLoading]  = useState(true);
 
   // Cereri — filtre
@@ -174,10 +175,26 @@ export default function AdminDashboard() {
     if (tab === 'users')    fetchUsers();
     if (tab === 'auctions') fetchAuctions();
     if (tab === 'requests') fetchRequests();
+    if (tab === 'invoices') fetchInvoices();
   }, [tab]);
 
   const fetchUsers    = async () => { setLoading(true); try { const res = await fetch(`${API_URL}/api/admin/users`,    { headers: { Authorization: `Bearer ${token}` } }); setUsers(await res.json());    } finally { setLoading(false); } };
   const fetchAuctions = async () => { setLoading(true); try { const res = await fetch(`${API_URL}/api/admin/auctions`, { headers: { Authorization: `Bearer ${token}` } }); setAuctions(await res.json()); } finally { setLoading(false); } };
+  const fetchInvoices = async () => { setLoading(true); try { const res = await fetch(`${API_URL}/api/admin/invoices`, { headers: { Authorization: `Bearer ${token}` } }); setInvoices(await res.json()); } finally { setLoading(false); } };
+
+  const downloadAdminInvoice = async (inv) => {
+    if (!inv.auction?._id) return;
+    try {
+      const res = await fetch(`${API_URL}/api/invoices/auction/${inv.auction._id}/download`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = `RevBid-${inv.invoiceNumber}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch {}
+  };
   const fetchRequests = async () => {
     setLoading(true);
     try {
@@ -254,6 +271,7 @@ export default function AdminDashboard() {
               <span style={{ marginLeft: 6, background: 'var(--warning-amber)', color: '#fff', fontSize: '0.6875rem', fontWeight: 700, borderRadius: '999px', padding: '1px 6px' }}>{pendingCount}</span>
             )}
           </button>
+          <button className={`tab-btn ${tab === 'invoices' ? 'active' : ''}`} onClick={() => setTab('invoices')}>Documente</button>
         </div>
 
         {/* ─── Tab: USERI ─────────────────────────────────────── */}
@@ -402,6 +420,44 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+        )}
+
+        {/* ─── Tab: DOCUMENTE ─────────────────────────────────── */}
+        {!loading && tab === 'invoices' && (
+          invoices.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">📄</div>
+              <p className="empty-state-title">Niciun document de tranzacție</p>
+              <p className="empty-state-text">Rezumatele de tranzacție apar automat când licitațiile cu câștigător se finalizează.</p>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr>{['Nr. document','Licitație','Cumpărător','Furnizor','Sumă','Status','Emailuri','Acțiuni'].map(h => <th key={h}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {invoices.map(inv => (
+                    <tr key={inv._id}>
+                      <td style={{ fontWeight: 600, fontFamily: 'var(--font-mono)', fontSize: '0.6875rem' }}>{inv.invoiceNumber}</td>
+                      <td style={{ maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.auction?.title || inv.auctionTitle || '—'}</td>
+                      <td>{inv.buyer ? `${inv.buyer.firstName} ${inv.buyer.lastName}` : (inv.buyerName || '—')}</td>
+                      <td>{inv.supplier ? `${inv.supplier.firstName} ${inv.supplier.lastName}` : (inv.supplierName || '—')}</td>
+                      <td style={{ fontWeight: 700, color: 'var(--bid-teal)' }}>{Number(inv.amount).toLocaleString('ro-RO')} {inv.currency}</td>
+                      <td><span className="badge badge-navy">{inv.status}</span></td>
+                      <td style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+                        <span title="Email cumpărător">{inv.emailedAtBuyer ? '✅' : '—'} B</span>{'  '}
+                        <span title="Email furnizor">{inv.emailedAtSupplier ? '✅' : '—'} F</span>
+                      </td>
+                      <td>
+                        {inv.auction?._id && (
+                          <button className="btn btn-sm btn-outline" onClick={() => downloadAdminInvoice(inv)}>⬇ PDF</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         )}
       </div>
 

@@ -41,6 +41,14 @@ function metaRow(label, value) {
   </tr>`;
 }
 
+/* Notă afișată în emailurile care au atașat documentul PDF. */
+const INVOICE_NOTE = `
+  <div style="background:#D8F3F1;border:1px solid #9FE0DB;border-radius:8px;padding:11px 13px;margin:0 0 16px">
+    <p style="margin:0;font-size:12px;color:#007A72;line-height:1.5">
+      📎 <strong>Rezumatul tranzacției</strong> (PDF) este atașat acestui email. Îl poți descărca oricând și de pe pagina licitației.
+    </p>
+  </div>`;
+
 /* ── Supralicitat (bid flow) ───────────────────────────────────── */
 const outbidTemplate = ({ firstName, auctionTitle, newPrice, auctionId }) => ({
   subject: `RevBid — Ai fost supralicitat la "${auctionTitle}"`,
@@ -80,7 +88,7 @@ const newBidTemplate = ({ firstName, auctionTitle, amount, auctionId, isOwner = 
 });
 
 /* ── Finalizare: câștigător ────────────────────────────────────── */
-const auctionWonTemplate = ({ firstName, auctionTitle, finalPrice, buyerName, auctionId }) => ({
+const auctionWonTemplate = ({ firstName, auctionTitle, finalPrice, buyerName, auctionId, hasInvoice = false }) => ({
   subject: `RevBid — Felicitări! Ai câștigat licitația "${auctionTitle}"`,
   html: layout({
     heading: '🏆 Felicitări, ai câștigat licitația!',
@@ -91,16 +99,17 @@ const auctionWonTemplate = ({ firstName, auctionTitle, finalPrice, buyerName, au
       `<table style="width:100%;border-collapse:collapse;margin-bottom:18px">
         ${metaRow('Licitație', auctionTitle)}
         ${buyerName ? metaRow('Inițiator', buyerName) : ''}
-      </table>
-      <p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
-        Pașii următori: deschide pagina licitației pentru detalii de contact și finalizarea colaborării cu inițiatorul.
+      </table>` +
+      (hasInvoice ? INVOICE_NOTE : '') +
+      `<p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
+        Pașii următori: deschide pagina licitației pentru a contacta inițiatorul, a confirma detaliile de livrare/execuție și a finaliza colaborarea.
       </p>`,
-    ctaText: 'Vezi licitația', ctaUrl: `${CLIENT()}/auction/${auctionId}`,
+    ctaText: 'Vezi licitația și pașii următori', ctaUrl: `${CLIENT()}/auction/${auctionId}`,
   }),
 });
 
 /* ── Finalizare: buyer ─────────────────────────────────────────── */
-const auctionEndedBuyerTemplate = ({ firstName, auctionTitle, finalPrice, winnerName, bidCount, auctionId }) => ({
+const auctionEndedBuyerTemplate = ({ firstName, auctionTitle, finalPrice, winnerName, bidCount, auctionId, hasInvoice = false }) => ({
   subject: `RevBid — Licitația ta "${auctionTitle}" s-a încheiat`,
   html: layout({
     heading: finalPrice != null ? 'Licitația ta s-a încheiat' : 'Licitația ta s-a încheiat fără oferte',
@@ -112,11 +121,15 @@ const auctionEndedBuyerTemplate = ({ firstName, auctionTitle, finalPrice, winner
         `<table style="width:100%;border-collapse:collapse;margin-bottom:18px">
           ${metaRow('Furnizor câștigător', winnerName || '—')}
           ${metaRow('Total oferte primite', bidCount)}
-        </table>`
+        </table>` +
+        (hasInvoice ? INVOICE_NOTE : '') +
+        `<p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
+          Pașii următori: contactează furnizorul câștigător pentru a confirma detaliile și a stabili livrarea sau execuția.
+        </p>`
       : `<p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
           Poți publica o licitație nouă cu un deadline mai lung sau un preț de pornire mai atractiv.
         </p>`,
-    ctaText: finalPrice != null ? 'Vezi rezultatul licitației' : 'Vezi licitația',
+    ctaText: finalPrice != null ? 'Vezi rezultatul și pașii următori' : 'Vezi licitația',
     ctaUrl: `${CLIENT()}/auction/${auctionId}`,
   }),
 });

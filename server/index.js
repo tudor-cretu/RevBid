@@ -49,6 +49,7 @@ app.use('/api/messages',         require('./routes/messages'));
 app.use('/api/subscriptions',    require('./routes/subscriptions'));
 app.use('/api/notifications',    require('./routes/notifications'));
 app.use('/api/auction-requests', require('./routes/auctionRequests'));
+app.use('/api/invoices',         require('./routes/invoices'));
 
 
 app.get('/', (req, res) => res.json({ message: 'RevBid API running' }));

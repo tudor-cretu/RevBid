@@ -21,7 +21,15 @@ export default function Messages() {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    const init = async () => { await fetchConversations(); const toId = params.get('to'); if (toId) await openOrCreateConversation(toId); };
+    const init = async () => {
+      await fetchConversations();
+      const toId = params.get('to');
+      if (toId) {
+        await openOrCreateConversation(toId, params.get('auction') || null);
+        const prefill = params.get('prefill');
+        if (prefill) setNewMsg(prefill);
+      }
+    };
     init(); connectSocket();
     return () => socketRef.current?.disconnect();
   }, []);
