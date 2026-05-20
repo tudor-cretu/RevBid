@@ -3,6 +3,7 @@
 const router         = require('express').Router();
 const User           = require('../models/User');
 const Auction        = require('../models/Auction');
+const Bid            = require('../models/Bid');
 const authMiddleware = require('../middleware/auth');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
@@ -67,15 +68,29 @@ router.put('/users/:id/ban', authMiddleware, adminOnly, async (req, res) => {
 router.get('/auctions', authMiddleware, adminOnly, async (req, res) => {
   try {
     const auctions = await Auction.find()
-      .populate('buyer', 'firstName lastName')
+      .populate('buyer', 'firstName lastName companyName')
       .sort({ createdAt: -1 });
 
+    const bidStats = await Bid.aggregate([
+      { $match: { auction: { $in: auctions.map(a => a._id) } } },
+      { $group: { _id: '$auction', bidCount: { $sum: 1 }, lowestBid: { $min: '$amount' } } },
+    ]);
+    const statsMap = new Map(bidStats.map(s => [s._id.toString(), s]));
+
+    const enriched = auctions.map(a => {
+      const obj  = a.toObject();
+      const stat = statsMap.get(a._id.toString());
+      obj.bidCount  = stat?.bidCount  ?? 0;
+      obj.lowestBid = stat?.lowestBid ?? null;
+      return obj;
+    });
+
     logger.fromReq(req).audit(EVENTS.ADMIN.LIST_AUCTIONS,
-      `Admin a listat toate licitațiile (${auctions.length})`, {
-        metadata: { count: auctions.length },
+      `Admin a listat toate licitațiile (${enriched.length})`, {
+        metadata: { count: enriched.length },
       });
 
-    res.json(auctions);
+    res.json(enriched);
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });

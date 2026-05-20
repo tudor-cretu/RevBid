@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 
 /* ─── Constante ─────────────────────────────────────────────────────── */
 export const CATEGORIES = [
@@ -172,12 +172,12 @@ export default function FilterBar({ filters, total, availableCategories }) {
     locationQ, setLocationQ,
     deadline, setDeadline,
     sortBy, setSortBy,
-    mobileOpen, setMobileOpen,
     filtered, activeChips, clearAll,
   } = filters;
 
   const cats = availableCategories?.length ? availableCategories : CATEGORIES;
   const [priceError, setPriceError] = useState('');
+  const [open, setOpen]             = useState(false);
 
   /* Validare min/max */
   const handleMinPrice = (v) => {
@@ -193,57 +193,59 @@ export default function FilterBar({ filters, total, availableCategories }) {
     else setPriceError('');
   };
 
+  const handleReset = () => { clearAll(); setPriceError(''); };
+
   return (
-    <>
-      {/* ── Bara principală ── */}
-      <div className="sf-bar">
+    <div className="sf-bar">
 
-        {/* Rând 1: search + buton filtre mobile + sort */}
-        <div className="sf-top-row">
-          <div className="sf-search-wrap">
-            <svg className="sf-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-            </svg>
-            <input
-              className="sf-search-input"
-              type="text"
-              placeholder="Caută după titlu, descriere, categorie, locație..."
-              value={searchRaw}
-              onChange={e => setSearch(e.target.value)}
-              aria-label="Caută licitații"
-            />
-            {searchRaw && (
-              <button className="sf-search-clear" onClick={() => setSearch('')} aria-label="Șterge căutarea">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
-              </button>
-            )}
-          </div>
+      {/* ── Toolbar ── */}
+      <div className="sf-toolbar">
+        <div className="sf-search-wrap">
+          <svg className="sf-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input
+            className="sf-search-input"
+            type="text"
+            placeholder="Caută după titlu, descriere, categorie, locație..."
+            value={searchRaw}
+            onChange={e => setSearch(e.target.value)}
+            aria-label="Caută licitații"
+          />
+          {searchRaw && (
+            <button className="sf-search-clear" onClick={() => setSearch('')} aria-label="Șterge căutarea">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          )}
+        </div>
 
-          {/* Buton filtre — mobil */}
-          <button className="sf-mobile-btn" onClick={() => setMobileOpen(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
-            </svg>
-            Filtre
-            {activeChips.length > 0 && (
-              <span className="sf-mobile-badge">{activeChips.length}</span>
-            )}
-          </button>
+        {/* Toggle panel filtre */}
+        <button className={`sf-filter-toggle ${open ? 'active' : ''}`} onClick={() => setOpen(o => !o)} aria-expanded={open}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+            <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+            <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+          </svg>
+          <span>Filtre</span>
+          {activeChips.length > 0 && <span className="sf-toggle-badge">{activeChips.length}</span>}
+          <svg className={`sf-chevron ${open ? 'up' : ''}`} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
 
-          {/* Sort — mereu vizibil */}
-          <select
-            className="sf-select sf-sort"
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value)}
-            aria-label="Sortare"
-          >
+        {/* Sort */}
+        <div className="sf-sort-wrap">
+          <span className="sf-sort-label">Sortează</span>
+          <select className="sf-select" value={sortBy} onChange={e => setSortBy(e.target.value)} aria-label="Sortare">
             {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
+      </div>
 
-        {/* Rând 2: filtre desktop ── */}
-        <div className="sf-filters-row">
-
+      {/* ── Panel colapsabil ── */}
+      {open && (
+        <div className="sf-panel">
           {/* Categorie */}
           <div className="sf-filter-group">
             <span className="sf-filter-label">Categorie</span>
@@ -260,204 +262,95 @@ export default function FilterBar({ filters, total, availableCategories }) {
             </div>
           </div>
 
-          {/* Preț */}
-          <div className="sf-filter-group sf-price-group">
-            <span className="sf-filter-label">Preț (RON)</span>
-            <div className="sf-price-inputs">
-              <input
-                className={`sf-input sf-price-input ${priceError ? 'error' : ''}`}
-                type="number" min="0" placeholder="Min"
-                value={minPrice} onChange={e => handleMinPrice(e.target.value)}
-              />
-              <span className="sf-price-sep">—</span>
-              <input
-                className={`sf-input sf-price-input ${priceError ? 'error' : ''}`}
-                type="number" min="0" placeholder="Max"
-                value={maxPrice} onChange={e => handleMaxPrice(e.target.value)}
-              />
-              {(minPrice || maxPrice) && (
-                <button className="sf-clear-btn" onClick={() => { setMinPrice(''); setMaxPrice(''); setPriceError(''); }} title="Resetează preț">✕</button>
-              )}
-            </div>
-            {priceError && <span className="sf-price-error">{priceError}</span>}
-          </div>
-
-          {/* Locație */}
-          <div className="sf-filter-group">
-            <span className="sf-filter-label">Locație</span>
-            <div className="sf-input-wrap">
-              <input
-                className="sf-input"
-                type="text" placeholder="Oraș, județ..."
-                value={locationQ} onChange={e => setLocationQ(e.target.value)}
-              />
-              {locationQ && (
-                <button className="sf-clear-btn" onClick={() => setLocationQ('')} title="Resetează locație">✕</button>
-              )}
-            </div>
-          </div>
-
-          {/* Deadline */}
-          <div className="sf-filter-group">
-            <span className="sf-filter-label">Deadline</span>
-            <div className="sf-deadline-pills">
-              {DEADLINE_OPTIONS.map(o => (
-                <button
-                  key={o.value}
-                  className={`sf-deadline-pill ${deadline === o.value ? 'active' : ''}`}
-                  onClick={() => setDeadline(o.value)}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Rând 3: chips filtre active + rezultate */}
-        {(activeChips.length > 0 || total !== undefined) && (
-          <div className="sf-bottom-row">
-            {activeChips.length > 0 && (
-              <div className="sf-active-chips">
-                {activeChips.map(chip => (
-                  <span key={chip.key} className="sf-active-chip">
-                    {chip.label}
-                    <button className="sf-chip-remove" onClick={chip.onRemove} aria-label={`Elimină filtrul ${chip.label}`}>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                    </button>
-                  </span>
-                ))}
-                <button className="sf-clear-all" onClick={clearAll}>Șterge tot</button>
+          <div className="sf-panel-row">
+            {/* Preț */}
+            <div className="sf-filter-group">
+              <span className="sf-filter-label">Preț (RON)</span>
+              <div className="sf-price-inputs">
+                <input
+                  className={`sf-input sf-price-input ${priceError ? 'error' : ''}`}
+                  type="number" min="0" placeholder="Min"
+                  value={minPrice} onChange={e => handleMinPrice(e.target.value)}
+                />
+                <span className="sf-price-sep">—</span>
+                <input
+                  className={`sf-input sf-price-input ${priceError ? 'error' : ''}`}
+                  type="number" min="0" placeholder="Max"
+                  value={maxPrice} onChange={e => handleMaxPrice(e.target.value)}
+                />
+                {(minPrice || maxPrice) && (
+                  <button className="sf-clear-btn" onClick={() => { setMinPrice(''); setMaxPrice(''); setPriceError(''); }} title="Resetează preț">✕</button>
+                )}
               </div>
-            )}
-            {total !== undefined && (
-              <span className="sf-results-count">
-                {filtered.length === total
-                  ? `${total} licitații`
-                  : `${filtered.length} din ${total} licitații`}
-              </span>
-            )}
+              {priceError && <span className="sf-price-error">{priceError}</span>}
+            </div>
+
+            {/* Locație */}
+            <div className="sf-filter-group">
+              <span className="sf-filter-label">Locație</span>
+              <div className="sf-input-wrap">
+                <input
+                  className="sf-input"
+                  type="text" placeholder="Oraș, județ..."
+                  value={locationQ} onChange={e => setLocationQ(e.target.value)}
+                />
+                {locationQ && (
+                  <button className="sf-clear-btn" onClick={() => setLocationQ('')} title="Resetează locație">✕</button>
+                )}
+              </div>
+            </div>
+
+            {/* Deadline */}
+            <div className="sf-filter-group">
+              <span className="sf-filter-label">Deadline</span>
+              <div className="sf-deadline-pills">
+                {DEADLINE_OPTIONS.map(o => (
+                  <button
+                    key={o.value}
+                    className={`sf-deadline-pill ${deadline === o.value ? 'active' : ''}`}
+                    onClick={() => setDeadline(o.value)}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* ── Drawer mobil ── */}
-      {mobileOpen && (
-        <MobileDrawer
-          filters={filters}
-          cats={cats}
-          priceError={priceError}
-          handleMinPrice={handleMinPrice}
-          handleMaxPrice={handleMaxPrice}
-          setPriceError={setPriceError}
-          onClose={() => setMobileOpen(false)}
-        />
+        </div>
       )}
-    </>
-  );
-}
 
-/* ─── Drawer mobil ──────────────────────────────────────────────────── */
-function MobileDrawer({ filters, cats, priceError, handleMinPrice, handleMaxPrice, setPriceError, onClose }) {
-  const {
-    selectedCategories, toggleCategory,
-    minPrice, setMinPrice,
-    maxPrice, setMaxPrice,
-    locationQ, setLocationQ,
-    deadline, setDeadline,
-    sortBy, setSortBy,
-    clearAll,
-  } = filters;
-
-  /* Blocăm scroll-ul body când drawer-ul e deschis */
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-
-  const handleClearAll = () => { clearAll(); setPriceError(''); };
-
-  return (
-    <div className="sf-drawer-overlay" onClick={onClose}>
-      <div className="sf-drawer" onClick={e => e.stopPropagation()}>
-        <div className="sf-drawer-header">
-          <h3 className="sf-drawer-title">Filtre</h3>
-          <button className="sf-drawer-close" onClick={onClose} aria-label="Închide">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-
-        <div className="sf-drawer-body">
-
-          {/* Sort */}
-          <DrawerSection title="Sortare">
-            <select className="sf-select sf-select-full" value={sortBy} onChange={e => setSortBy(e.target.value)}>
-              {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </DrawerSection>
-
-          {/* Categorie */}
-          <DrawerSection title="Categorie">
-            <div className="sf-cat-chips">
-              {cats.map(cat => (
-                <button
-                  key={cat}
-                  className={`sf-cat-chip ${selectedCategories.includes(cat) ? 'active' : ''}`}
-                  onClick={() => toggleCategory(cat)}
-                >
-                  {cat}
-                </button>
+      {/* ── Summary: chips active + count ── */}
+      {(activeChips.length > 0 || total !== undefined) && (
+        <div className="sf-summary">
+          {activeChips.length > 0 ? (
+            <div className="sf-chips">
+              {activeChips.map(chip => (
+                <span key={chip.key} className="sf-active-chip">
+                  {chip.label}
+                  <button className="sf-chip-remove" onClick={chip.onRemove} aria-label={`Elimină filtrul ${chip.label}`}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  </button>
+                </span>
               ))}
+              <button className="sf-reset" onClick={handleReset}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                </svg>
+                Resetează filtrele
+              </button>
             </div>
-          </DrawerSection>
-
-          {/* Preț */}
-          <DrawerSection title="Preț (RON)">
-            <div className="sf-price-inputs">
-              <input className={`sf-input sf-price-input ${priceError ? 'error' : ''}`} type="number" min="0" placeholder="Min" value={minPrice} onChange={e => handleMinPrice(e.target.value)} />
-              <span className="sf-price-sep">—</span>
-              <input className={`sf-input sf-price-input ${priceError ? 'error' : ''}`} type="number" min="0" placeholder="Max" value={maxPrice} onChange={e => handleMaxPrice(e.target.value)} />
-            </div>
-            {priceError && <span className="sf-price-error">{priceError}</span>}
-            {(minPrice || maxPrice) && (
-              <button className="sf-text-btn" onClick={() => { setMinPrice(''); setMaxPrice(''); setPriceError(''); }}>Resetează preț</button>
-            )}
-          </DrawerSection>
-
-          {/* Locație */}
-          <DrawerSection title="Locație">
-            <div className="sf-input-wrap">
-              <input className="sf-input" type="text" placeholder="Oraș, județ, regiune..." value={locationQ} onChange={e => setLocationQ(e.target.value)} />
-              {locationQ && <button className="sf-clear-btn" onClick={() => setLocationQ('')}>✕</button>}
-            </div>
-          </DrawerSection>
-
-          {/* Deadline */}
-          <DrawerSection title="Deadline">
-            <div className="sf-deadline-pills sf-deadline-pills-wrap">
-              {DEADLINE_OPTIONS.map(o => (
-                <button key={o.value} className={`sf-deadline-pill ${deadline === o.value ? 'active' : ''}`} onClick={() => setDeadline(o.value)}>
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </DrawerSection>
+          ) : (
+            <span className="sf-no-filters">Niciun filtru activ</span>
+          )}
+          {total !== undefined && (
+            <span className="sf-count">
+              {filtered.length === total
+                ? <><strong>{total}</strong> licitații</>
+                : <><strong>{filtered.length}</strong> din {total} licitații</>}
+            </span>
+          )}
         </div>
-
-        <div className="sf-drawer-footer">
-          <button className="btn btn-outline" onClick={handleClearAll}>Șterge tot</button>
-          <button className="btn btn-primary" onClick={onClose}>Aplică filtrele</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DrawerSection({ title, children }) {
-  return (
-    <div className="sf-drawer-section">
-      <p className="sf-drawer-section-title">{title}</p>
-      {children}
+      )}
     </div>
   );
 }

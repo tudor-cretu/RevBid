@@ -1,9 +1,16 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate }                  from 'react-router-dom';
 import { useAuth }                      from '../../context/AuthContext';
-import AuctionCard                      from '../../components/AuctionCard';
+import AuctionCard, { AuctionCardSkeleton } from '../../components/AuctionCard';
+import StatCard                         from '../../components/StatCard';
 import FilterBar, { useAuctionFilters } from '../../components/SearchAndFilters';
 import { API_URL }                      from '../../config';
+
+function isExpiringSoon(deadline) {
+  if (!deadline) return false;
+  const diff = new Date(deadline) - new Date();
+  return diff > 0 && diff <= 48 * 3600000;
+}
 
 export default function BuyerDashboard() {
   const { user, token } = useAuth();
@@ -29,12 +36,17 @@ export default function BuyerDashboard() {
   }, [allAuctions]);
 
   /* Statistici (pe toate licitațiile, indiferent de filtru) */
-  const counts = useMemo(() => ({
-    active:    allAuctions.filter(a => a.status === 'active').length,
-    closed:    allAuctions.filter(a => a.status === 'closed').length,
-    cancelled: allAuctions.filter(a => a.status === 'cancelled').length,
-    draft:     allAuctions.filter(a => a.status === 'draft').length,
-  }), [allAuctions]);
+  const counts = useMemo(() => {
+    const active = allAuctions.filter(a => a.status === 'active');
+    return {
+      active:        active.length,
+      activeWithBids: active.filter(a => (a.bidCount ?? 0) > 0).length,
+      expiringSoon:  active.filter(a => isExpiringSoon(a.deadline)).length,
+      closed:        allAuctions.filter(a => a.status === 'closed').length,
+      cancelled:     allAuctions.filter(a => a.status === 'cancelled').length,
+      draft:         allAuctions.filter(a => a.status === 'draft').length,
+    };
+  }, [allAuctions]);
 
   useEffect(() => { fetchMyAuctions(); }, []);
 
@@ -64,8 +76,33 @@ export default function BuyerDashboard() {
         <div className="page-header">
           <div>
             <h1 className="page-title">Licitațiile tale</h1>
-            <p className="page-subtitle">Gestionează licitațiile active, urmărește ofertele și selectează cel mai bun furnizor.</p>
+            <p className="page-subtitle">
+              Gestionează cererile active, compară ofertele și selectează furnizorul potrivit.
+            </p>
+
+            {/* Insight contextual */}
+            <div className="rb-insight">
+              <span className="rb-insight-pill is-teal">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 9h8M8 13h5"/>
+                </svg>
+                <span><strong>{counts.active}</strong> licitații active</span>
+              </span>
+              <span className="rb-insight-pill">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span><strong>{counts.activeWithBids}</strong> au primit oferte</span>
+              </span>
+              <span className={`rb-insight-pill ${counts.expiringSoon > 0 ? 'is-amber' : ''}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span><strong>{counts.expiringSoon}</strong> expiră curând</span>
+              </span>
+            </div>
           </div>
+
           <button className="btn btn-primary btn-lg" onClick={() => navigate('/auction/create')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -76,22 +113,32 @@ export default function BuyerDashboard() {
 
         {/* Stats */}
         <div className="stats-grid stats-grid-4">
-          <div className="stat-card">
-            <p className="stat-value" style={{ color: 'var(--bid-teal)' }}>{counts.active}</p>
-            <p className="stat-label">Active</p>
-          </div>
-          <div className="stat-card">
-            <p className="stat-value" style={{ color: 'var(--action-blue)' }}>{counts.closed}</p>
-            <p className="stat-label">Încheiate</p>
-          </div>
-          <div className="stat-card">
-            <p className="stat-value" style={{ color: 'var(--warning-amber)' }}>{counts.cancelled}</p>
-            <p className="stat-label">Anulate</p>
-          </div>
-          <div className="stat-card">
-            <p className="stat-value" style={{ color: 'var(--text-muted)' }}>{counts.draft}</p>
-            <p className="stat-label">Draft</p>
-          </div>
+          <StatCard
+            icon="auctions" tone="teal"
+            value={counts.active} label="Licitații active"
+            hint={counts.activeWithBids > 0
+              ? `${counts.activeWithBids} ${counts.activeWithBids === 1 ? 'a primit' : 'au primit'} oferte`
+              : 'Așteaptă primele oferte'}
+            onClick={() => handleStatusChange('active')}
+          />
+          <StatCard
+            icon="won" tone="blue"
+            value={counts.closed} label="Încheiate"
+            hint="Vezi istoricul deciziilor"
+            onClick={() => handleStatusChange('closed')}
+          />
+          <StatCard
+            icon="cancelled" tone="red"
+            value={counts.cancelled} label="Anulate"
+            hint={counts.cancelled > 0 ? 'Necesită revizuire' : 'Nimic anulat'}
+            onClick={() => handleStatusChange('cancelled')}
+          />
+          <StatCard
+            icon="draft" tone="gray"
+            value={counts.draft} label="Drafturi"
+            hint={counts.draft > 0 ? 'Pregătite de publicare' : 'Pregătește o licitație nouă'}
+            onClick={() => handleStatusChange('draft')}
+          />
         </div>
 
         {/* Status pills */}
@@ -118,7 +165,9 @@ export default function BuyerDashboard() {
 
         {/* Rezultate */}
         {loading ? (
-          <p className="loading-text">Se încarcă...</p>
+          <div className="auction-grid">
+            {Array.from({ length: 6 }).map((_, i) => <AuctionCardSkeleton key={i} />)}
+          </div>
         ) : auctionsByStatus.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📋</div>

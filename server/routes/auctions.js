@@ -24,12 +24,27 @@ router.get('/', async (req, res) => {
       .populate('buyer', 'firstName lastName companyName')
       .sort({ createdAt: -1 });
 
+    // Agregare oferte: nr. total + cea mai bună (cea mai mică) ofertă per licitație
+    const bidStats = await Bid.aggregate([
+      { $match: { auction: { $in: auctions.map(a => a._id) } } },
+      { $group: { _id: '$auction', bidCount: { $sum: 1 }, lowestBid: { $min: '$amount' } } },
+    ]);
+    const statsMap = new Map(bidStats.map(s => [s._id.toString(), s]));
+
+    const enriched = auctions.map(a => {
+      const obj  = a.toObject();
+      const stat = statsMap.get(a._id.toString());
+      obj.bidCount  = stat?.bidCount  ?? 0;
+      obj.lowestBid = stat?.lowestBid ?? null;
+      return obj;
+    });
+
     logger.fromReq(req).debug(EVENTS.AUCTION.FETCH,
-      `Fetch licitații (${auctions.length} rezultate)`, {
+      `Fetch licitații (${enriched.length} rezultate)`, {
         metadata: { filter },
       });
 
-    res.json(auctions);
+    res.json(enriched);
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
