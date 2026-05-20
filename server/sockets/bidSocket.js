@@ -4,7 +4,7 @@ const Bid          = require('../models/Bid');
 const Subscription = require('../models/Subscription');
 const Notification = require('../models/Notification');
 const sendMail     = require('../config/mailer');
-const { outbidTemplate } = require('../config/emailTemplates');
+const { outbidTemplate, newBidTemplate } = require('../config/emailTemplates');
 const notifyUser   = require('../utils/notify');
 
 module.exports = (io) => {
@@ -158,40 +158,36 @@ module.exports = (io) => {
           notifiedSet.add(previousWinner.supplier._id.toString());
         }
 
+        const buyerIdStr = auction.buyer.toString();
+
         for (const sub of subscriptions) {
           if (!sub.user) continue;
           const uid = sub.user._id.toString();
           if (notifiedSet.has(uid)) continue;
           notifiedSet.add(uid);
 
+          const isOwner = uid === buyerIdStr;
+
           // Notificare persistata + socket
           await notifyUser(io, uid, {
             type: 'bid',
-            text: `Oferta noua la "${auction.title}": ${amount} RON`,
+            text: isOwner
+              ? `Ofertă nouă la licitația ta "${auction.title}": ${amount} RON`
+              : `Ofertă nouă la "${auction.title}": ${amount} RON`,
             link: `/auction/${auctionId}`,
           });
 
-          // Email
-          sendMail({
-            to:      sub.user.email,
-            subject: `RevBid — Oferta noua la "${auction.title}"`,
-            html: `
-              <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:24px">
-                <h2 style="color:#033667">Oferta noua la licitatia ta urmarita</h2>
-                <p>Salut <strong>${sub.user.firstName}</strong>,</p>
-                <p>A fost depusa o oferta noua la <strong>"${auction.title}"</strong>.</p>
-                <div style="background:#EAF4F7;border-radius:8px;padding:16px;margin:16px 0;text-align:center">
-                  <p style="margin:0;color:#6B7C86;font-size:14px">Pret curent</p>
-                  <p style="margin:4px 0;font-size:28px;font-weight:bold;color:#00A99D">${amount} RON</p>
-                </div>
-                <a href="${process.env.CLIENT_URL}/auction/${auctionId}"
-                   style="display:inline-block;background:#00A99D;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;font-weight:600">
-                  Vezi licitatia
-                </a>
-                <p style="margin-top:24px;font-size:12px;color:#999">RevBid — Platforma de licitatii inverse</p>
-              </div>
-            `,
-          });
+          // Email (template branded)
+          if (sub.user.email) {
+            const { subject, html } = newBidTemplate({
+              firstName:    sub.user.firstName,
+              auctionTitle: auction.title,
+              amount,
+              auctionId,
+              isOwner,
+            });
+            sendMail({ to: sub.user.email, subject, html });
+          }
         }
 
         // ── Confirmare catre emitent ──

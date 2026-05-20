@@ -1,63 +1,164 @@
+'use strict';
+
+/* RevBid — template-uri email, stilizate cu paleta brandului */
+
+const CLIENT = () => process.env.CLIENT_URL || 'http://localhost:5173';
+
+/* ── Layout comun ──────────────────────────────────────────────── */
+function layout({ heading, headingColor = '#033667', accent = '#00A99D', intro, bodyHtml = '', ctaText, ctaUrl, ctaColor = '#00A99D' }) {
+  return `
+  <div style="background:#EAF4F7;padding:32px 16px;font-family:Arial,Helvetica,sans-serif">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #DDE5EA">
+      <div style="height:4px;background:${accent}"></div>
+      <div style="padding:28px 28px 24px">
+        <div style="font-size:20px;font-weight:800;color:#033667;margin-bottom:18px;letter-spacing:-0.02em">
+          Rev<span style="color:#00A99D">Bid</span>
+        </div>
+        <h1 style="font-size:19px;color:${headingColor};margin:0 0 12px;line-height:1.35">${heading}</h1>
+        <p style="font-size:14px;color:#1F3442;line-height:1.6;margin:0 0 16px">${intro}</p>
+        ${bodyHtml}
+        ${ctaText ? `<a href="${ctaUrl}" style="display:inline-block;background:${ctaColor};color:#ffffff;padding:11px 26px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;margin-top:4px">${ctaText}</a>` : ''}
+        <p style="margin-top:28px;font-size:11px;color:#6B7C86;border-top:1px solid #E8EEF2;padding-top:14px">
+          RevBid — Marketplace de licitații inverse. Ai primit acest email pentru că ești implicat în această licitație.
+        </p>
+      </div>
+    </div>
+  </div>`;
+}
+
+function priceBox(label, value, color = '#00A99D', bg = '#EAF4F7') {
+  return `
+    <div style="background:${bg};border-radius:10px;padding:14px;margin:6px 0 18px;text-align:center">
+      <p style="margin:0;color:#6B7C86;font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:700">${label}</p>
+      <p style="margin:5px 0 0;font-size:26px;font-weight:800;color:${color}">${value}</p>
+    </div>`;
+}
+
+function metaRow(label, value) {
+  return `<tr>
+    <td style="padding:5px 0;font-size:13px;color:#6B7C86">${label}</td>
+    <td style="padding:5px 0;font-size:13px;color:#1F3442;font-weight:700;text-align:right">${value}</td>
+  </tr>`;
+}
+
+/* ── Supralicitat (bid flow) ───────────────────────────────────── */
 const outbidTemplate = ({ firstName, auctionTitle, newPrice, auctionId }) => ({
   subject: `RevBid — Ai fost supralicitat la "${auctionTitle}"`,
-  html: `
-    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:24px">
-      <h2 style="color:#1a1a1a">Ai fost supralicitat!</h2>
-      <p>Salut <strong>${firstName}</strong>,</p>
-      <p>Cineva a depus o ofertă mai mică la licitația
-        <strong>"${auctionTitle}"</strong>.
-      </p>
-      <div style="background:#f5f5f5;border-radius:8px;padding:16px;margin:16px 0;text-align:center">
-        <p style="margin:0;color:#666;font-size:14px">Preț curent</p>
-        <p style="margin:4px 0;font-size:28px;font-weight:bold;color:#e53e3e">${newPrice} RON</p>
-      </div>
-      <a href="${process.env.CLIENT_URL}/auction/${auctionId}"
-         style="display:inline-block;background:#1a1a1a;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none">
-        Liciteaza acum
-      </a>
-      <p style="margin-top:24px;font-size:12px;color:#999">RevBid — Platforma de licitatii inverse</p>
-    </div>
-  `,
+  html: layout({
+    heading: 'Ai fost supralicitat',
+    headingColor: '#B45309', accent: '#F59E0B', ctaColor: '#00A99D',
+    intro: `Salut <strong>${firstName}</strong>, cineva a depus o ofertă mai mică la licitația <strong>"${auctionTitle}"</strong>.`,
+    bodyHtml: priceBox('Preț curent', `${newPrice} RON`, '#F59E0B', '#FFFBEB'),
+    ctaText: 'Licitează din nou', ctaUrl: `${CLIENT()}/auction/${auctionId}`,
+  }),
 });
 
-const auctionWonTemplate = ({ firstName, auctionTitle, finalPrice, auctionId }) => ({
-  subject: `RevBid — Ai castigat licitatia "${auctionTitle}"!`,
-  html: `
-    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:24px">
-      <h2 style="color:#1a1a1a">Felicitari, ai castigat! 🎉</h2>
-      <p>Salut <strong>${firstName}</strong>,</p>
-      <p>Oferta ta a fost cea mai buna la licitatia
-        <strong>"${auctionTitle}"</strong>.
-      </p>
-      <div style="background:#f0fff4;border-radius:8px;padding:16px;margin:16px 0;text-align:center">
-        <p style="margin:0;color:#666;font-size:14px">Pret final</p>
-        <p style="margin:4px 0;font-size:28px;font-weight:bold;color:#38a169">${finalPrice} RON</p>
-      </div>
-      <a href="${process.env.CLIENT_URL}/auction/${auctionId}"
-         style="display:inline-block;background:#1a1a1a;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none">
-        Vezi detalii
-      </a>
-      <p style="margin-top:24px;font-size:12px;color:#999">RevBid — Platforma de licitatii inverse</p>
-    </div>
-  `,
-});
-
+/* ── Deadline aproape ──────────────────────────────────────────── */
 const deadlineSoonTemplate = ({ firstName, auctionTitle, minutesLeft, auctionId }) => ({
-  subject: `RevBid — Licitatia "${auctionTitle}" se incheie in ${minutesLeft} minute`,
-  html: `
-    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:24px">
-      <h2 style="color:#1a1a1a">⏰ Timp limitat!</h2>
-      <p>Salut <strong>${firstName}</strong>,</p>
-      <p>Licitatia <strong>"${auctionTitle}"</strong> la care participi
-         se incheie in <strong>${minutesLeft} minute</strong>.
-      </p>
-      <a href="${process.env.CLIENT_URL}/auction/${auctionId}"
-         style="display:inline-block;background:#1a1a1a;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none">
-        Vezi licitatia
-      </a>
-      <p style="margin-top:24px;font-size:12px;color:#999">RevBid — Platforma de licitatii inverse</p>
-    </div>
-  `,
+  subject: `RevBid — Licitația "${auctionTitle}" se încheie în ${minutesLeft} minute`,
+  html: layout({
+    heading: '⏰ Licitația se încheie curând',
+    headingColor: '#B45309', accent: '#F59E0B',
+    intro: `Salut <strong>${firstName}</strong>, licitația <strong>"${auctionTitle}"</strong> la care participi se încheie în <strong>${minutesLeft} minute</strong>.`,
+    ctaText: 'Vezi licitația', ctaUrl: `${CLIENT()}/auction/${auctionId}`,
+  }),
 });
 
-module.exports = { outbidTemplate, auctionWonTemplate, deadlineSoonTemplate };
+/* ── Ofertă nouă (către buyer / abonați) ───────────────────────── */
+const newBidTemplate = ({ firstName, auctionTitle, amount, auctionId, isOwner = false }) => ({
+  subject: isOwner
+    ? `RevBid — Ofertă nouă la licitația ta "${auctionTitle}"`
+    : `RevBid — Ofertă nouă la "${auctionTitle}"`,
+  html: layout({
+    heading: isOwner ? 'Ai primit o ofertă nouă' : 'Ofertă nouă la o licitație urmărită',
+    intro: isOwner
+      ? `Salut <strong>${firstName}</strong>, un furnizor tocmai a depus o ofertă la licitația ta <strong>"${auctionTitle}"</strong>.`
+      : `Salut <strong>${firstName}</strong>, a fost depusă o ofertă nouă la <strong>"${auctionTitle}"</strong>.`,
+    bodyHtml: priceBox('Preț curent', `${amount} RON`, '#00A99D'),
+    ctaText: 'Vezi licitația', ctaUrl: `${CLIENT()}/auction/${auctionId}`,
+  }),
+});
+
+/* ── Finalizare: câștigător ────────────────────────────────────── */
+const auctionWonTemplate = ({ firstName, auctionTitle, finalPrice, buyerName, auctionId }) => ({
+  subject: `RevBid — Felicitări! Ai câștigat licitația "${auctionTitle}"`,
+  html: layout({
+    heading: '🏆 Felicitări, ai câștigat licitația!',
+    headingColor: '#17B26A', accent: '#17B26A', ctaColor: '#17B26A',
+    intro: `Salut <strong>${firstName}</strong>, oferta ta a fost cea câștigătoare la <strong>"${auctionTitle}"</strong>.`,
+    bodyHtml:
+      priceBox('Ofertă câștigătoare', `${finalPrice} RON`, '#17B26A', '#DCFCE7') +
+      `<table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+        ${metaRow('Licitație', auctionTitle)}
+        ${buyerName ? metaRow('Inițiator', buyerName) : ''}
+      </table>
+      <p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
+        Pașii următori: deschide pagina licitației pentru detalii de contact și finalizarea colaborării cu inițiatorul.
+      </p>`,
+    ctaText: 'Vezi licitația', ctaUrl: `${CLIENT()}/auction/${auctionId}`,
+  }),
+});
+
+/* ── Finalizare: buyer ─────────────────────────────────────────── */
+const auctionEndedBuyerTemplate = ({ firstName, auctionTitle, finalPrice, winnerName, bidCount, auctionId }) => ({
+  subject: `RevBid — Licitația ta "${auctionTitle}" s-a încheiat`,
+  html: layout({
+    heading: finalPrice != null ? 'Licitația ta s-a încheiat' : 'Licitația ta s-a încheiat fără oferte',
+    intro: finalPrice != null
+      ? `Salut <strong>${firstName}</strong>, licitația ta <strong>"${auctionTitle}"</strong> s-a încheiat. Oferta câștigătoare este de <strong>${finalPrice} RON</strong> din partea lui <strong>${winnerName || 'un furnizor'}</strong>.`
+      : `Salut <strong>${firstName}</strong>, licitația ta <strong>"${auctionTitle}"</strong> s-a încheiat fără oferte primite.`,
+    bodyHtml: finalPrice != null
+      ? priceBox('Ofertă câștigătoare', `${finalPrice} RON`, '#00A99D') +
+        `<table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+          ${metaRow('Furnizor câștigător', winnerName || '—')}
+          ${metaRow('Total oferte primite', bidCount)}
+        </table>`
+      : `<p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
+          Poți publica o licitație nouă cu un deadline mai lung sau un preț de pornire mai atractiv.
+        </p>`,
+    ctaText: finalPrice != null ? 'Vezi rezultatul licitației' : 'Vezi licitația',
+    ctaUrl: `${CLIENT()}/auction/${auctionId}`,
+  }),
+});
+
+/* ── Finalizare: furnizor necâștigător ─────────────────────────── */
+const auctionLostTemplate = ({ firstName, auctionTitle, myAmount, finalPrice, auctionId }) => ({
+  subject: `RevBid — Licitația "${auctionTitle}" s-a încheiat`,
+  html: layout({
+    heading: 'Licitația s-a încheiat',
+    intro: `Salut <strong>${firstName}</strong>, licitația <strong>"${auctionTitle}"</strong> s-a încheiat. Oferta ta nu a fost selectată de această dată.`,
+    bodyHtml:
+      `<table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+        ${metaRow('Oferta ta', `${myAmount} RON`)}
+        ${finalPrice != null ? metaRow('Ofertă câștigătoare', `${finalPrice} RON`) : ''}
+        ${metaRow('Status final', 'Încheiată')}
+      </table>
+      <p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
+        Nu te descuraja — sunt licitații noi în fiecare zi. Explorează oportunitățile deschise.
+      </p>`,
+    ctaText: 'Vezi alte licitații', ctaUrl: `${CLIENT()}/dashboard`,
+  }),
+});
+
+/* ── Finalizare: abonat fără ofertă ────────────────────────────── */
+const auctionEndedSubscriberTemplate = ({ firstName, auctionTitle, auctionId }) => ({
+  subject: `RevBid — Licitația urmărită "${auctionTitle}" s-a încheiat`,
+  html: layout({
+    heading: 'O licitație urmărită s-a încheiat',
+    intro: `Salut <strong>${firstName}</strong>, licitația <strong>"${auctionTitle}"</strong> pe care o urmăreai s-a încheiat.`,
+    bodyHtml: `<p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
+      Descoperă licitații similare deschise acum și depune o ofertă competitivă.
+    </p>`,
+    ctaText: 'Explorează licitații', ctaUrl: `${CLIENT()}/dashboard`,
+  }),
+});
+
+module.exports = {
+  outbidTemplate,
+  deadlineSoonTemplate,
+  newBidTemplate,
+  auctionWonTemplate,
+  auctionEndedBuyerTemplate,
+  auctionLostTemplate,
+  auctionEndedSubscriberTemplate,
+};

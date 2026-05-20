@@ -3,9 +3,9 @@
 const cron     = require('node-cron');
 const Auction  = require('../models/Auction');
 const Bid      = require('../models/Bid');
-const User     = require('../models/User');
 const sendMail = require('../config/mailer');
-const { auctionWonTemplate, deadlineSoonTemplate } = require('../config/emailTemplates');
+const { deadlineSoonTemplate } = require('../config/emailTemplates');
+const { finalizeAuctionNotifications } = require('../services/auctionNotify');
 const logger   = require('../utils/logger');
 const EVENTS   = require('../utils/events');
 
@@ -15,7 +15,7 @@ module.exports = (io) => {
   cron.schedule('* * * * *', async () => {
     const now = new Date();
 
-    /* ── 1. Închide licitațiile expirate ───────────────────────── */
+    /* ── 1. Închide licitațiile expirate + flow notificare finalizare ── */
     try {
       const expired = await Auction.find({
         status:   'active',
@@ -33,56 +33,9 @@ module.exports = (io) => {
             metadata:   { deadline: auction.deadline, closedAt: now },
           });
 
-        const winningBid = await Bid.findOne({
-          auction:   auction._id,
-          isWinning: true,
-        }).populate('supplier', 'firstName email');
-
-        if (winningBid?.supplier?.email) {
-          const { subject, html } = auctionWonTemplate({
-            firstName:    winningBid.supplier.firstName,
-            auctionTitle: auction.title,
-            finalPrice:   winningBid.amount,
-            auctionId:    auction._id,
-          });
-          sendMail({ to: winningBid.supplier.email, subject, html });
-
-          logger.info(EVENTS.BID.WINNING,
-            `Email câștigător trimis: "${auction.title}" → ${winningBid.amount} RON`, {
-              entityType: 'auction',
-              entityId:   auction._id.toString(),
-              metadata:   { supplierId: winningBid.supplier._id, finalPrice: winningBid.amount },
-            });
-        }
-
-        const buyer = await User.findById(auction.buyer);
-        if (buyer?.email) {
-          sendMail({
-            to:      buyer.email,
-            subject: `RevBid — Licitatia "${auction.title}" s-a incheiat`,
-            html: `
-              <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:24px">
-                <h2>Licitatia s-a incheiat</h2>
-                <p>Salut <strong>${buyer.firstName}</strong>,</p>
-                <p>Licitatia <strong>"${auction.title}"</strong> s-a incheiat.</p>
-                ${winningBid
-                  ? `<p>Pret final: <strong>${winningBid.amount} RON</strong></p>`
-                  : `<p>Nu au fost depuse oferte.</p>`
-                }
-                <a href="${process.env.CLIENT_URL}/auction/${auction._id}"
-                   style="display:inline-block;background:#1a1a1a;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none">
-                  Vezi detalii
-                </a>
-              </div>
-            `,
-          });
-        }
-
-        io.to(auction._id.toString()).emit('auction_closed', {
-          auctionId:  auction._id,
-          finalPrice: winningBid?.amount || null,
-          winnerId:   winningBid?.supplier?._id || null,
-        });
+        /* Notificări complete: buyer + câștigător + necâștigători + abonați
+           (in-app + email + pop-up live). Idempotent prin endNotificationsSent. */
+        await finalizeAuctionNotifications(io, auction._id);
       }
 
       if (expired.length > 0) {

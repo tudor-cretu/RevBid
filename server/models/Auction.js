@@ -20,6 +20,10 @@ const auctionSchema = new mongoose.Schema({
   deadline:     { type: Date },
   autoExtend:   { type: Boolean, default: false },
   winningBid:   { type: mongoose.Schema.Types.ObjectId, ref: 'Bid', default: null },
+
+  // Notificarea de finalizare — flag idempotent ca să nu trimitem de mai multe ori
+  endNotificationsSent: { type: Boolean, default: false },
+  endedNotifiedAt:      { type: Date,    default: null },
 }, { timestamps: true });
 
 // La creare, currentPrice = startPrice

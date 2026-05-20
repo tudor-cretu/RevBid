@@ -7,6 +7,7 @@ const Bid            = require('../models/Bid');
 const authMiddleware = require('../middleware/auth');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
+const { finalizeAuctionNotifications } = require('../services/auctionNotify');
 
 /* ── Middleware — doar admin ──────────────────────────────────── */
 const adminOnly = (req, res, next) => {
@@ -114,6 +115,13 @@ router.put('/auctions/:id/close', authMiddleware, adminOnly, async (req, res) =>
       });
 
     res.json(auction);
+
+    /* Flow complet de notificare a finalizării (in-app + email + pop-up live).
+       Rulează după răspuns; idempotent prin flag-ul endNotificationsSent. */
+    if (auction) {
+      finalizeAuctionNotifications(req.app.get('io'), auction._id);
+    }
+    return;
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });

@@ -6,6 +6,8 @@ import PriceChart                      from '../components/PriceChart';
 import { API_URL }                     from '../config';
 import AuctionChatBox                  from '../components/AuctionChatBox';
 import MapView                         from '../components/MapView';
+import AuctionEndModal                 from '../components/AuctionEndModal';
+import { fireConfetti }                from '../utils/confetti';
 
 const fmtNum = n => (n === null || n === undefined ? '—' : Number(n).toLocaleString('ro-RO'));
 const fmtDateTime = d => d
@@ -45,6 +47,20 @@ export default function AuctionDetail() {
   const [deleteReason, setDeleteReason] = useState('');
   const [deleting,     setDeleting]     = useState(false);
   const [requestToast, setRequestToast] = useState('');
+
+  // Pop-up live la finalizarea licitației
+  const [endModal,     setEndModal]     = useState(null);
+  const endHandledRef = useRef(false);
+  // Ref cu date "live" — handler-ul socket citește mereu valorile curente
+  const liveRef = useRef({ userId: null, bids: [], buyerId: null });
+
+  useEffect(() => {
+    liveRef.current = {
+      userId:  user?.id || null,
+      bids,
+      buyerId: auction?.buyer?._id || auction?.buyer || null,
+    };
+  }, [user, bids, auction]);
 
   useEffect(() => {
     fetchAuction(); fetchSubscription(); fetchBids(); connectSocket();
@@ -146,6 +162,36 @@ export default function AuctionDetail() {
     });
     s.on('auction_closed', () => {
       setAuction(prev => prev ? { ...prev, status: 'closed' } : prev);
+    });
+    /* Finalizare licitație — pop-up live + confetti pentru câștigător */
+    s.on('auction_finalized', (payload) => {
+      setAuction(prev => prev
+        ? { ...prev, status: payload.status || 'closed', currentPrice: payload.finalPrice ?? prev.currentPrice }
+        : prev);
+
+      if (endHandledRef.current) return;   // o singură dată per eveniment
+      endHandledRef.current = true;
+
+      const { userId, bids: liveBids } = liveRef.current;
+      const myBidObj = liveBids
+        .filter(b => (b.supplier?._id || b.supplier) === userId)
+        .sort((a, b) => a.amount - b.amount)[0];
+
+      let variant = 'generic';
+      if (userId && payload.winnerId && userId === payload.winnerId)     variant = 'won';
+      else if (userId && payload.buyerId && userId === payload.buyerId)  variant = 'buyer';
+      else if (userId && myBidObj)                                       variant = 'lost';
+      else if (userId)                                                   variant = 'watcher';
+
+      setEndModal({
+        variant,
+        finalPrice: payload.finalPrice,
+        winnerName: payload.winnerName,
+        bidCount:   payload.bidCount,
+        myBid:      myBidObj?.amount ?? null,
+      });
+
+      if (variant === 'won') fireConfetti();
     });
     s.on('deadline_extended', ({ newDeadline }) => {
       setAuction(prev => prev ? { ...prev, deadline: newDeadline } : prev);
@@ -292,6 +338,19 @@ export default function AuctionDetail() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Pop-up live la finalizarea licitației */}
+        {endModal && (
+          <AuctionEndModal
+            variant={endModal.variant}
+            finalPrice={endModal.finalPrice}
+            winnerName={endModal.winnerName}
+            bidCount={endModal.bidCount}
+            myBid={endModal.myBid}
+            onClose={() => setEndModal(null)}
+            onExplore={() => { setEndModal(null); navigate('/dashboard'); }}
+          />
         )}
 
         <div className="ad-layout">

@@ -129,11 +129,15 @@ export default function Navbar() {
   };
 
   const notifIcon = (type) => ({
-    message:      '💬',
-    auction_chat: '🏷️',
-    bid:          '💰',
-    outbid:       '⚠️',
-    auction_closed: '🔒',
+    message:             '💬',
+    auction_chat:        '🏷️',
+    bid:                 '💰',
+    outbid:              '⚠️',
+    auction_closed:      '🔒',
+    auction_won:         '🏆',
+    auction_lost:        '🤝',
+    auction_ended:       '🏁',
+    auction_watch_ended: '👀',
   }[type] || '🔔');
 
   if (!user) return null;

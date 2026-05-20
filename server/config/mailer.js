@@ -8,7 +8,12 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+/**
+ * Trimite un email.
+ * @returns {Promise<boolean>} true dacă a fost trimis cu succes, false la eroare.
+ */
 const sendMail = async ({ to, subject, html }) => {
+  if (!to) return false;
   try {
     await transporter.sendMail({
       from:    process.env.EMAIL_FROM,
@@ -17,8 +22,10 @@ const sendMail = async ({ to, subject, html }) => {
       html,
     });
     console.log(`Email trimis catre ${to}`);
+    return true;
   } catch (err) {
     console.error('Eroare email:', err.message);
+    return false;
   }
 };
 
