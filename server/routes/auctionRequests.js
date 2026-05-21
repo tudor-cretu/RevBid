@@ -12,13 +12,13 @@ const notifyUser     = require('../utils/notify');
 
 // Câmpuri pe care buyerul le poate edita prin approval flow (nu startPrice, nu currentPrice)
 const EDITABLE_FIELDS = [
-  'title', 'description', 'category', 'tags',
+  'title', 'description', 'category', 'quantity', 'tags',
   'targetPrice', 'deadline', 'autoExtend', 'location',
 ];
 
 // Câmpuri "importante" — vor fi evidențiate în diff view dacă licitația are bids
 const IMPORTANT_FIELDS = new Set([
-  'targetPrice', 'deadline', 'location', 'category', 'description',
+  'targetPrice', 'deadline', 'location', 'category', 'description', 'quantity',
 ]);
 
 /* ── adminOnly middleware ───────────────────────────────────── */

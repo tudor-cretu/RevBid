@@ -3,6 +3,7 @@
 const router         = require('express').Router();
 const Auction        = require('../models/Auction');
 const authMiddleware = require('../middleware/auth');
+const optionalAuth   = require('../middleware/optionalAuth');
 const Bid            = require('../models/Bid');
 const Subscription   = require('../models/Subscription');
 const AuctionChat    = require('../models/AuctionChat');
@@ -10,15 +11,107 @@ const notifyUser     = require('../utils/notify');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
 
-/* ── GET /api/auctions ─────────────────────────────────────── */
-router.get('/', async (req, res) => {
+/* ── Validare pentru PUBLICARE ──────────────────────────────────
+   Drafturile pot fi salvate incomplete; la publicare verificăm
+   toate câmpurile obligatorii. Întoarce { valid, missing[], errors{} }. */
+const PUBLISH_FIELD_LABELS = {
+  title:       'Titlu',
+  description: 'Descriere',
+  category:    'Categorie',
+  quantity:    'Cantitate',
+  startPrice:  'Buget de pornire',
+  deadline:    'Deadline',
+};
+
+function validateForPublish(data) {
+  const missing = [];
+  const errors  = {};
+
+  const str = v => (typeof v === 'string' ? v.trim() : v);
+
+  if (!str(data.title))       { missing.push('title');       errors.title = 'Titlul este obligatoriu.'; }
+  if (!str(data.description)) { missing.push('description'); errors.description = 'Descrierea este obligatorie.'; }
+  if (!str(data.category))    { missing.push('category');    errors.category = 'Categoria este obligatorie.'; }
+  if (!str(data.quantity))    { missing.push('quantity');    errors.quantity = 'Cantitatea este obligatorie.'; }
+
+  const sp = Number(data.startPrice);
+  if (data.startPrice === undefined || data.startPrice === null || data.startPrice === '' || isNaN(sp) || sp <= 0) {
+    missing.push('startPrice');
+    errors.startPrice = 'Bugetul de pornire trebuie să fie un număr pozitiv.';
+  }
+
+  if (!data.deadline) {
+    missing.push('deadline');
+    errors.deadline = 'Deadline-ul este obligatoriu.';
+  } else {
+    const d = new Date(data.deadline);
+    if (isNaN(d.getTime())) {
+      missing.push('deadline');
+      errors.deadline = 'Deadline-ul are un format invalid.';
+    } else if (d.getTime() <= Date.now()) {
+      errors.deadline = 'Deadline-ul trebuie să fie în viitor.';
+      if (!missing.includes('deadline')) missing.push('deadline');
+    }
+  }
+
+  return { valid: missing.length === 0 && Object.keys(errors).length === 0, missing, errors };
+}
+
+/* Normalizează un payload de licitație din req.body (câmpuri permise). */
+function pickAuctionFields(body = {}) {
+  if (!body || typeof body !== 'object') body = {};
+  const out = {};
+  if (body.title       !== undefined) out.title       = String(body.title).trim();
+  if (body.description !== undefined) out.description = String(body.description).trim();
+  if (body.category    !== undefined) out.category    = String(body.category).trim();
+  if (body.quantity    !== undefined) out.quantity    = String(body.quantity).trim();
+  if (body.tags        !== undefined) out.tags        = Array.isArray(body.tags) ? body.tags : [];
+  if (body.location    !== undefined) out.location    = body.location || {};
+  if (body.autoExtend  !== undefined) out.autoExtend  = !!body.autoExtend;
+  if (body.startPrice  !== undefined)
+    out.startPrice = (body.startPrice === '' || body.startPrice === null) ? undefined : Number(body.startPrice);
+  if (body.targetPrice !== undefined)
+    out.targetPrice = (body.targetPrice === '' || body.targetPrice === null) ? null : Number(body.targetPrice);
+  if (body.deadline    !== undefined)
+    out.deadline = body.deadline ? new Date(body.deadline) : null;
+  return out;
+}
+
+/* ── GET /api/auctions ─────────────────────────────────────────
+   Drafturile sunt PRIVATE — vizibile doar proprietarului.
+   - status absent          → doar licitații active
+   - status=draft           → doar drafturile proprii (necesită auth)
+   - status=all             → tot ce e public + drafturile proprii
+   - status=active/closed…  → filtru exact (fără drafturi străine)        */
+router.get('/', optionalAuth, async (req, res) => {
   try {
     const { category, status } = req.query;
+    const uid = req.user?.id || null;
+
     const filter = {};
     if (category) filter.category = category;
-    // status=all → niciun filtru; status absent → default active; altfel filtru exact
-    if (status && status !== 'all') filter.status = status;
-    else if (!status)               filter.status = 'active';
+
+    if (!status) {
+      filter.status = 'active';
+    } else if (status === 'draft') {
+      // Drafturi: strict ale utilizatorului curent.
+      if (!uid) return res.json([]);
+      filter.status = 'draft';
+      filter.buyer  = uid;
+    } else if (status === 'all') {
+      // Tot ce nu e draft + drafturile proprii.
+      if (uid) {
+        filter.$or = [
+          { status: { $ne: 'draft' } },
+          { status: 'draft', buyer: uid },
+        ];
+      } else {
+        filter.status = { $ne: 'draft' };
+      }
+    } else {
+      // status concret (active/closed/cancelled) — drafturile nu se ating.
+      filter.status = status === 'draft' ? 'active' : status;
+    }
 
     const auctions = await Auction.find(filter)
       .populate('buyer', 'firstName lastName companyName')
@@ -41,7 +134,7 @@ router.get('/', async (req, res) => {
 
     logger.fromReq(req).debug(EVENTS.AUCTION.FETCH,
       `Fetch licitații (${enriched.length} rezultate)`, {
-        metadata: { filter },
+        metadata: { filter: { category, status } },
       });
 
     res.json(enriched);
@@ -51,8 +144,9 @@ router.get('/', async (req, res) => {
   }
 });
 
-/* ── GET /api/auctions/:id ─────────────────────────────────── */
-router.get('/:id', async (req, res) => {
+/* ── GET /api/auctions/:id ─────────────────────────────────────
+   Drafturile sunt accesibile doar proprietarului / adminului.      */
+router.get('/:id', optionalAuth, async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id)
       .populate('buyer', 'firstName lastName companyName email phone avatar rating');
@@ -66,6 +160,22 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Licitatia nu exista' });
     }
 
+    // Protecție drafturi: vizibile doar proprietarului sau adminului.
+    if (auction.status === 'draft') {
+      const uid     = req.user?.id || null;
+      const ownerId = auction.buyer?._id?.toString() || auction.buyer?.toString();
+      const isOwner = uid && uid === ownerId;
+      const isAdmin = req.user?.role === 'admin';
+      if (!isOwner && !isAdmin) {
+        logger.fromReq(req).security(EVENTS.AUCTION.DRAFT_ACCESS_DENIED,
+          'Tentativă de accesare a unui draft de către un alt utilizator', {
+            entityType: 'auction',
+            entityId:   req.params.id,
+          });
+        return res.status(404).json({ message: 'Licitatia nu exista' });
+      }
+    }
+
     res.json(auction);
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
@@ -73,7 +183,10 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-/* ── POST /api/auctions ─────────────────────────────────────── */
+/* ── POST /api/auctions ─────────────────────────────────────────
+   Body acceptă `status: 'draft' | 'active'`.
+   - draft  → se salvează cu orice câmpuri (chiar incomplete)
+   - active → se aplică validarea completă de publicare              */
 router.post('/', authMiddleware, async (req, res) => {
   try {
     if (req.user.role !== 'buyer') {
@@ -85,42 +198,70 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(403).json({ message: 'Doar cumparatorii pot crea licitatii' });
     }
 
-    const {
-      title, description, category, tags,
-      startPrice, targetPrice, deadline,
-      autoExtend, location,
-    } = req.body;
+    const wantsPublish = req.body.status === 'active' || req.body.publish === true;
+    const fields       = pickAuctionFields(req.body);
+
+    if (wantsPublish) {
+      const { valid, missing, errors } = validateForPublish(fields);
+      if (!valid) {
+        logger.fromReq(req).warn(EVENTS.AUCTION.PUBLISH_VALIDATION_FAIL,
+          'Validare publicare eșuată la crearea licitației', {
+            entityType: 'auction',
+            metadata:   { missing },
+          });
+        return res.status(400).json({
+          message: 'Completează toate câmpurile obligatorii pentru publicare.',
+          missing, errors,
+        });
+      }
+    }
 
     const auction = await Auction.create({
-      buyer: req.user.id,
-      title, description, category,
-      tags:        tags || [],
-      startPrice,
-      targetPrice: targetPrice || null,
-      deadline:    deadline ? new Date(deadline) : null,
-      autoExtend:  autoExtend || false,
-      location:    location || {},
-      status:      'active',
+      buyer:       req.user.id,
+      title:       fields.title       || '',
+      description: fields.description || '',
+      category:    fields.category    || '',
+      quantity:    fields.quantity    || '',
+      tags:        fields.tags        || [],
+      startPrice:  fields.startPrice,
+      targetPrice: fields.targetPrice ?? null,
+      deadline:    fields.deadline    ?? null,
+      autoExtend:  fields.autoExtend  || false,
+      location:    fields.location    || {},
+      status:      wantsPublish ? 'active' : 'draft',
+      publishedAt: wantsPublish ? new Date() : null,
     });
 
-    await Subscription.findOneAndUpdate(
-      { user: req.user.id, auction: auction._id },
-      { user: req.user.id, auction: auction._id },
-      { upsert: true, new: true }
-    );
+    if (wantsPublish) {
+      // La publicare furnizorii ofertează → currentPrice pornește de la startPrice.
+      auction.currentPrice = auction.startPrice;
+      await auction.save();
 
-    logger.fromReq(req).audit(EVENTS.AUCTION.CREATED,
-      `Licitație creată: "${title}"`, {
-        entityType: 'auction',
-        entityId:   auction._id.toString(),
-        metadata: {
-          category,
-          startPrice,
-          targetPrice: targetPrice || null,
-          deadline:    deadline || null,
-          location:    location?.city || null,
-        },
-      });
+      await Subscription.findOneAndUpdate(
+        { user: req.user.id, auction: auction._id },
+        { user: req.user.id, auction: auction._id },
+        { upsert: true, new: true }
+      );
+
+      logger.fromReq(req).audit(EVENTS.AUCTION.CREATED,
+        `Licitație creată și publicată: "${auction.title}"`, {
+          entityType: 'auction',
+          entityId:   auction._id.toString(),
+          metadata: {
+            category:    auction.category,
+            quantity:    auction.quantity,
+            startPrice:  auction.startPrice,
+            targetPrice: auction.targetPrice,
+            deadline:    auction.deadline,
+          },
+        });
+    } else {
+      logger.fromReq(req).audit(EVENTS.AUCTION.DRAFT_CREATED,
+        `Draft licitație creat${auction.title ? `: "${auction.title}"` : ''}`, {
+          entityType: 'auction',
+          entityId:   auction._id.toString(),
+        });
+    }
 
     res.status(201).json(auction);
   } catch (err) {
@@ -129,7 +270,10 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-/* ── PUT /api/auctions/:id ──────────────────────────────────── */
+/* ── PUT /api/auctions/:id ──────────────────────────────────────
+   Editare directă. Drafturile pot fi editate complet (orice câmp).
+   Licitațiile active păstrează lista restrânsă de câmpuri.
+   (Modificarea licitațiilor active trece de regulă prin approval flow.) */
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
@@ -145,23 +289,31 @@ router.put('/:id', authMiddleware, async (req, res) => {
       return res.status(403).json({ message: 'Nu ai permisiune' });
     }
 
-    if (auction.status === 'closed') {
-      return res.status(400).json({ message: 'Licitatia e deja inchisa' });
+    if (auction.status === 'closed' || auction.status === 'cancelled') {
+      return res.status(400).json({ message: 'Licitatia nu mai poate fi editata' });
     }
 
-    const allowed = ['title', 'description', 'category', 'tags', 'targetPrice', 'deadline', 'autoExtend', 'location'];
+    const fields  = pickAuctionFields(req.body);
+    const isDraft = auction.status === 'draft';
+
+    // Pentru licitații active nu se permite modificarea bugetului de pornire.
+    if (!isDraft) delete fields.startPrice;
+
     const changedFields = [];
-    allowed.forEach(field => {
-      if (req.body[field] !== undefined) {
-        auction[field] = req.body[field];
-        changedFields.push(field);
-      }
-    });
+    for (const [k, v] of Object.entries(fields)) {
+      auction[k] = v;
+      changedFields.push(k);
+    }
+    // Cât timp e draft, currentPrice urmărește startPrice.
+    if (isDraft && fields.startPrice !== undefined) {
+      auction.currentPrice = fields.startPrice;
+    }
 
     await auction.save();
 
-    logger.fromReq(req).audit(EVENTS.AUCTION.UPDATED,
-      `Licitație actualizată: "${auction.title}"`, {
+    logger.fromReq(req).audit(
+      isDraft ? EVENTS.AUCTION.DRAFT_UPDATED : EVENTS.AUCTION.UPDATED,
+      `${isDraft ? 'Draft' : 'Licitație'} actualizat(ă)${auction.title ? `: "${auction.title}"` : ''}`, {
         entityType: 'auction',
         entityId:   auction._id.toString(),
         metadata:   { changedFields },
@@ -174,7 +326,86 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-/* ── DELETE /api/auctions/:id ───────────────────────────────── */
+/* ── POST /api/auctions/:id/publish ─────────────────────────────
+   Publică un draft. Aplică (opțional) câmpuri din body, validează
+   toate câmpurile obligatorii și trece licitația în starea `active`. */
+router.post('/:id/publish', authMiddleware, async (req, res) => {
+  try {
+    const auction = await Auction.findById(req.params.id);
+    if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
+
+    if (auction.buyer.toString() !== req.user.id) {
+      logger.fromReq(req).security(EVENTS.AUCTION.UNAUTHORIZED,
+        'Tentativă de publicare a licitației altui utilizator', {
+          entityType: 'auction',
+          entityId:   req.params.id,
+        });
+      return res.status(403).json({ message: 'Nu ai permisiune' });
+    }
+    if (auction.status !== 'draft') {
+      return res.status(400).json({ message: 'Doar drafturile pot fi publicate.' });
+    }
+
+    // Aplică eventualele modificări trimise odată cu publicarea.
+    const fields = pickAuctionFields(req.body);
+    for (const [k, v] of Object.entries(fields)) auction[k] = v;
+
+    const { valid, missing, errors } = validateForPublish({
+      title:       auction.title,
+      description: auction.description,
+      category:    auction.category,
+      quantity:    auction.quantity,
+      startPrice:  auction.startPrice,
+      deadline:    auction.deadline,
+    });
+
+    if (!valid) {
+      logger.fromReq(req).warn(EVENTS.AUCTION.PUBLISH_VALIDATION_FAIL,
+        'Validare publicare eșuată', {
+          entityType: 'auction',
+          entityId:   auction._id.toString(),
+          metadata:   { missing },
+        });
+      return res.status(400).json({
+        message: 'Completează toate câmpurile obligatorii înainte de publicare.',
+        missing, errors,
+      });
+    }
+
+    auction.status       = 'active';
+    auction.publishedAt  = new Date();
+    auction.currentPrice = auction.startPrice;
+    await auction.save();
+
+    // Cumpărătorul se abonează automat la propria licitație.
+    await Subscription.findOneAndUpdate(
+      { user: req.user.id, auction: auction._id },
+      { user: req.user.id, auction: auction._id },
+      { upsert: true, new: true }
+    );
+
+    logger.fromReq(req).audit(EVENTS.AUCTION.DRAFT_PUBLISHED,
+      `Draft publicat: "${auction.title}"`, {
+        entityType: 'auction',
+        entityId:   auction._id.toString(),
+        metadata: {
+          category:   auction.category,
+          quantity:   auction.quantity,
+          startPrice: auction.startPrice,
+          deadline:   auction.deadline,
+        },
+      });
+
+    res.json(auction);
+  } catch (err) {
+    logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
+    res.status(500).json({ message: 'Eroare server', error: err.message });
+  }
+});
+
+/* ── DELETE /api/auctions/:id ───────────────────────────────────
+   Drafturile se șterg definitiv (nu au relații/istoric).
+   Licitațiile publicate se anulează (soft delete).                  */
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
@@ -188,6 +419,16 @@ router.delete('/:id', authMiddleware, async (req, res) => {
           metadata:   { ownerId: auction.buyer.toString() },
         });
       return res.status(403).json({ message: 'Nu ai permisiune' });
+    }
+
+    if (auction.status === 'draft') {
+      await auction.deleteOne();
+      logger.fromReq(req).audit(EVENTS.AUCTION.DRAFT_DELETED,
+        `Draft șters${auction.title ? `: "${auction.title}"` : ''}`, {
+          entityType: 'auction',
+          entityId:   auction._id.toString(),
+        });
+      return res.json({ message: 'Draftul a fost sters' });
     }
 
     auction.status = 'cancelled';
@@ -207,7 +448,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-/* ── GET /api/auctions/:id/chat ─────────────────────────────── */
+/* ── GET /api/auctions/:id/chat ─────────────────────────────────── */
 router.get('/:id/chat', authMiddleware, async (req, res) => {
   try {
     const messages = await AuctionChat.find({ auction: req.params.id })
@@ -221,7 +462,7 @@ router.get('/:id/chat', authMiddleware, async (req, res) => {
   }
 });
 
-/* ── POST /api/auctions/:id/chat ────────────────────────────── */
+/* ── POST /api/auctions/:id/chat ────────────────────────────────── */
 router.post('/:id/chat', authMiddleware, async (req, res) => {
   try {
     const { content } = req.body;

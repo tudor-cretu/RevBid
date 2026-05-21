@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../config';
+import { fmtDeadline, toDatetimeLocal } from '../utils/format';
+import DateTimePicker from '../components/DateTimePicker';
 
 const CATEGORIES = ['IT', 'Constructii', 'Transport', 'Servicii', 'Produse', 'Auto', 'Electronice', 'Mobilier', 'Alimentar', 'Altele'];
 
@@ -30,9 +32,10 @@ export default function AuctionRequestForm() {
         title:       data.title       || '',
         description: data.description || '',
         category:    data.category    || '',
+        quantity:    data.quantity    || '',
         tags:        (data.tags || []).join(', '),
         targetPrice: data.targetPrice || '',
-        deadline:    data.deadline ? new Date(data.deadline).toISOString().slice(0, 16) : '',
+        deadline:    toDatetimeLocal(data.deadline),
         autoExtend:  data.autoExtend  || false,
       });
     } catch {
@@ -186,9 +189,16 @@ export default function AuctionRequestForm() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Taguri (virgulă)</label>
-                  <input className="form-input" name="tags" value={form.tags} onChange={handleChange} placeholder="tag1, tag2, ..." />
+                  <label className="form-label">Cantitate</label>
+                  <input className="form-input" name="quantity" value={form.quantity} onChange={handleChange} placeholder="ex: 1000 buc" maxLength={60} />
+                  <span className="form-hint">
+                    Curent: <strong>{auction.quantity?.trim() || '—'}</strong>
+                  </span>
                 </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Taguri (virgulă)</label>
+                <input className="form-input" name="tags" value={form.tags} onChange={handleChange} placeholder="tag1, tag2, ..." />
               </div>
             </Section>
 
@@ -203,9 +213,13 @@ export default function AuctionRequestForm() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Deadline</label>
-                  <input className="form-input" type="datetime-local" name="deadline" value={form.deadline} onChange={handleChange} />
+                  <DateTimePicker
+                    value={form.deadline}
+                    onChange={val => setForm(p => ({ ...p, deadline: val }))}
+                  />
                   <span className="form-hint">
-                    Curent: <strong>{auction.deadline ? new Date(auction.deadline).toLocaleString('ro-RO') : '—'}</strong>
+                    Curent: <strong>{fmtDeadline(auction.deadline, '—')}</strong>
+                    {form.deadline && ` · Nou: ${fmtDeadline(form.deadline)}`}
                   </span>
                 </div>
               </div>

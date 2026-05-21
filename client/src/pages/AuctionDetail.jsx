@@ -10,11 +10,11 @@ import AuctionEndModal                 from '../components/AuctionEndModal';
 import AuctionOutcome                  from '../components/AuctionOutcome';
 import ReviewModal                     from '../components/ReviewModal';
 import { fireConfetti }                from '../utils/confetti';
+import { fmtDeadline }                 from '../utils/format';
 
 const fmtNum = n => (n === null || n === undefined ? '—' : Number(n).toLocaleString('ro-RO'));
-const fmtDateTime = d => d
-  ? new Date(d).toLocaleString('ro-RO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-  : '—';
+/* Deadline standardizat dd/mm/yyyy HH:mm. */
+const fmtDateTime = d => fmtDeadline(d, '—');
 const relTime = d => {
   if (!d) return '';
   const diff = Math.floor((Date.now() - new Date(d)) / 1000);
@@ -601,6 +601,10 @@ export default function AuctionDetail() {
                   <span className="ad-detail-value">{auction.category || '—'}</span>
                 </div>
                 <div className="ad-detail-item">
+                  <span className="ad-detail-label">📦 Cantitate</span>
+                  <span className="ad-detail-value">{auction.quantity?.trim() || '—'}</span>
+                </div>
+                <div className="ad-detail-item">
                   <span className="ad-detail-label">📍 Locație</span>
                   <span className="ad-detail-value">{auction.location?.city || auction.location?.address || 'Nespecificată'}</span>
                 </div>
@@ -667,6 +671,10 @@ export default function AuctionDetail() {
                 <div className="ad-meta-row">
                   <span className="ad-meta-key">Status</span>
                   <span className={`badge ${statusCls}`}>{statusLabel}</span>
+                </div>
+                <div className="ad-meta-row">
+                  <span className="ad-meta-key">Cantitate</span>
+                  <span className="ad-meta-val">{auction.quantity?.trim() || '—'}</span>
                 </div>
                 <div className="ad-meta-row">
                   <span className="ad-meta-key">Deadline</span>
@@ -812,6 +820,21 @@ export default function AuctionDetail() {
                 downloadingInvoice={downloadingInvoice}
                 onMessage={() => messageCounterparty(outcomeRole)}
               />
+            ) : auction.status === 'draft' ? (
+              isBuyer && (
+                <div className="card" style={{ textAlign: 'center', background: 'var(--ice-blue)' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📝</div>
+                  <p style={{ fontWeight: 600, color: 'var(--text-heading)', marginBottom: '4px' }}>
+                    Licitație în lucru (draft)
+                  </p>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                    Acest draft nu este vizibil furnizorilor. Completează datele și publică-l pentru a primi oferte.
+                  </p>
+                  <button className="btn btn-primary btn-block" onClick={() => navigate(`/auction/${id}/edit`)}>
+                    ✏️ Continuă editarea
+                  </button>
+                </div>
+              )
             ) : !isActive && (
               <div className="card" style={{ textAlign: 'center', background: 'var(--ice-blue)' }}>
                 <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🔒</div>

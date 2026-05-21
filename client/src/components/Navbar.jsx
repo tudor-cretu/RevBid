@@ -44,6 +44,15 @@ export default function Navbar() {
     } catch {}
   };
 
+  // ── Sincronizare cu pagina dedicată de notificări ─────────────
+  // Când pagina /notifications marchează/șterge ceva, reîmprospătăm.
+  useEffect(() => {
+    if (!user || !token) return;
+    const handler = () => fetchNotifications();
+    window.addEventListener('rb-notifications-changed', handler);
+    return () => window.removeEventListener('rb-notifications-changed', handler);
+  }, [user, token]);
+
   // ── Connect socket and listen for live notifications ──────────
   useEffect(() => {
     if (!user || !token) return;
@@ -84,27 +93,47 @@ export default function Navbar() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  // ── Bell click: show dropdown + mark all as read ──────────────
-  const handleBellClick = async () => {
-    const wasOpen = showDropdown;
-    setShowDropdown(p => !p);
+  // ── Bell click: doar deschide/închide dropdown-ul ─────────────
+  // Notificările NU se mai marchează automat ca citite — citirea
+  // se face la click pe notificare sau din pagina dedicată.
+  const handleBellClick = () => setShowDropdown(p => !p);
 
-    if (!wasOpen && unreadCount > 0) {
-      // Optimistic update
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-      // Persist to DB
+  // ── Click pe notificare → pagina de notificări (cu cea selectată) ──
+  const handleNotifClick = async (notif) => {
+    setShowDropdown(false);
+    setMobileOpen(false);
+
+    // Marchează notificarea ca citită (optimist + persistat)
+    if (notif._id && !notif.read) {
+      setNotifications(prev => prev.map(n => n._id === notif._id ? { ...n, read: true } : n));
       try {
-        await fetch(`${API_URL}/api/notifications/read`, {
-          method:  'PUT',
-          headers: { Authorization: `Bearer ${token}` },
+        await fetch(`${API_URL}/api/notifications/${notif._id}`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body:    JSON.stringify({ read: true }),
         });
       } catch {}
     }
+
+    navigate(notif._id ? `/notifications?selected=${notif._id}` : '/notifications');
   };
 
-  const handleNotifClick = (notif) => {
+  // ── Marchează toate ca citite din dropdown ────────────────────
+  const markAllRead = async () => {
+    if (unreadCount === 0) return;
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    try {
+      await fetch(`${API_URL}/api/notifications/read`, {
+        method:  'PUT',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {}
+  };
+
+  const goToNotificationsPage = () => {
     setShowDropdown(false);
-    navigate(notif.link);
+    setMobileOpen(false);
+    navigate('/notifications');
   };
 
   // ── Clear all ─────────────────────────────────────────────────
@@ -138,6 +167,13 @@ export default function Navbar() {
     auction_lost:        '🤝',
     auction_ended:       '🏁',
     auction_watch_ended: '👀',
+    approval_request:    '📝',
+    approval_approved:   '✅',
+    approval_rejected:   '❌',
+    review_ready:        '⭐',
+    review_received:     '🌟',
+    delivery_confirmed:  '📦',
+    receipt_confirmed:   '📬',
   }[type] || '🔔');
 
   if (!user) return null;
@@ -188,10 +224,15 @@ export default function Navbar() {
             {showDropdown && (
               <div className="rb-notif-dropdown">
                 <div className="rb-notif-header">
-                  <span className="rb-notif-title">Notificari</span>
-                  {notifications.length > 0 && (
-                    <button className="rb-notif-clear" onClick={clearAll}>Sterge tot</button>
-                  )}
+                  <span className="rb-notif-title">Notificări</span>
+                  <div className="rb-notif-header-actions">
+                    {unreadCount > 0 && (
+                      <button className="rb-notif-clear" onClick={markAllRead}>Citește tot</button>
+                    )}
+                    {notifications.length > 0 && (
+                      <button className="rb-notif-clear" onClick={clearAll}>Șterge tot</button>
+                    )}
+                  </div>
                 </div>
                 {notifications.length === 0 ? (
                   <div className="rb-notif-empty">
@@ -200,7 +241,7 @@ export default function Navbar() {
                   </div>
                 ) : (
                   <div className="rb-notif-list">
-                    {notifications.map(notif => (
+                    {notifications.slice(0, 8).map(notif => (
                       <div
                         key={notif.id}
                         className={`rb-notif-item ${notif.read ? '' : 'unread'}`}
@@ -216,6 +257,9 @@ export default function Navbar() {
                     ))}
                   </div>
                 )}
+                <button className="rb-notif-footer" onClick={goToNotificationsPage}>
+                  Vezi toate notificările →
+                </button>
               </div>
             )}
           </div>
@@ -308,10 +352,18 @@ const navbarCSS = `
   padding: 14px 16px; border-bottom: 1px solid var(--border-light);
 }
 .rb-notif-title { font-size: 0.875rem; font-weight: 600; color: var(--text-heading); }
-.rb-notif-clear { font-size: 0.75rem; color: var(--action-blue); background: none; border: none; cursor: pointer; font-family: var(--font-sans); }
+.rb-notif-header-actions { display: flex; gap: 10px; }
+.rb-notif-clear { font-size: 0.75rem; color: var(--action-blue); background: none; border: none; cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
 .rb-notif-clear:hover { text-decoration: underline; }
 .rb-notif-empty { padding: 2rem; text-align: center; }
-.rb-notif-list { max-height: 380px; overflow-y: auto; }
+.rb-notif-list { max-height: 360px; overflow-y: auto; }
+.rb-notif-footer {
+  width: 100%; padding: 11px 16px; border: none; cursor: pointer;
+  background: var(--ice-blue); color: var(--bid-teal);
+  font-size: 0.8125rem; font-weight: 700; font-family: var(--font-sans);
+  border-top: 1px solid var(--border-light); transition: background var(--transition-fast);
+}
+.rb-notif-footer:hover { background: var(--soft-aqua); }
 .rb-notif-item {
   display: flex; gap: 10px; padding: 12px 16px; cursor: pointer;
   border-bottom: 1px solid var(--border-light); align-items: flex-start;

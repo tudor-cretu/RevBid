@@ -1,9 +1,40 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { API_URL } from '../config';
 
 const fmt = n => (n === null || n === undefined ? '—' : Number(n).toLocaleString('ro-RO'));
 
-export default function AuctionCard({ auction }) {
+/* Câmpuri obligatorii pentru publicarea unui draft. */
+const DRAFT_REQUIRED = [
+  { key: 'title',       label: 'titlu' },
+  { key: 'description', label: 'descriere' },
+  { key: 'category',    label: 'categorie' },
+  { key: 'quantity',    label: 'cantitate' },
+  { key: 'startPrice',  label: 'buget' },
+  { key: 'deadline',    label: 'deadline' },
+];
+
+function draftMissing(a) {
+  return DRAFT_REQUIRED
+    .filter(({ key }) => {
+      const v = a[key];
+      if (key === 'startPrice') return !v || Number(v) <= 0;
+      return !String(v || '').trim();
+    })
+    .map(f => f.label);
+}
+
+export default function AuctionCard({ auction, onChanged }) {
   const navigate   = useNavigate();
+  const { user, token } = useAuth();
+  const [deleting, setDeleting] = useState(false);
+
+  const isDraft   = auction.status === 'draft';
+  const ownerId   = auction.buyer?._id || auction.buyer;
+  const isOwner   = user?.id && user.id === ownerId;
+  const ownerDraft = isDraft && isOwner;
+
   const timeLeft   = getTimeLeft(auction.deadline);
   const isExpired  = timeLeft === 'Expirat';
   const isUrgent   = !isExpired && isWithin24h(auction.deadline);
@@ -23,14 +54,37 @@ export default function AuctionCard({ auction }) {
     ? Math.round(((startPrice - auction.currentPrice) / startPrice) * 100)
     : 0;
 
+  const title    = auction.title?.trim() || 'Licitație fără titlu';
+  const desc     = auction.description?.trim() || 'Fără descriere completată.';
+  const quantity = auction.quantity?.trim() || '';
+
   const goDetail = e => { e?.stopPropagation(); navigate(`/auction/${auction._id}`); };
+  const goEdit   = e => { e?.stopPropagation(); navigate(`/auction/${auction._id}/edit`); };
+
+  const handleCardClick = () => { ownerDraft ? navigate(`/auction/${auction._id}/edit`) : goDetail(); };
+
+  const deleteDraft = async e => {
+    e?.stopPropagation();
+    if (!window.confirm('Sigur vrei să ștergi acest draft? Acțiunea este definitivă.')) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auctions/${auction._id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) onChanged?.();
+    } catch { /* ignorăm — utilizatorul poate reîncerca */ }
+    finally { setDeleting(false); }
+  };
+
+  const missing = isDraft ? draftMissing(auction) : [];
 
   return (
-    <div className="auction-card" onClick={goDetail}>
+    <div className="auction-card" onClick={handleCardClick}>
       {/* ── Media ── */}
       <div className="ac-media">
         {auction.images?.[0] ? (
-          <img src={auction.images[0].url} alt={auction.title} className="ac-img" />
+          <img src={auction.images[0].url} alt={title} className="ac-img" />
         ) : (
           <div className="ac-img-placeholder">
             <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--muted-gray)" strokeWidth="1.4">
@@ -44,32 +98,47 @@ export default function AuctionCard({ auction }) {
 
       {/* ── Body ── */}
       <div className="ac-body">
-        <h3 className="ac-title">{auction.title}</h3>
-        <p className="ac-desc">{auction.description}</p>
+        <h3 className={`ac-title ${auction.title?.trim() ? '' : 'ac-title-empty'}`}>{title}</h3>
+        <p className="ac-desc">{desc}</p>
 
-        {/* Price strip */}
-        <div className="ac-price-strip">
-          <div className="ac-price-main">
-            <span className="ac-price-label">
-              {hasBids ? 'Cea mai bună ofertă' : 'Preț de pornire'}
-            </span>
-            <span className={`ac-price-value ${hasBids ? 'has-bids' : ''}`}>
-              {fmt(auction.currentPrice)} <span className="ac-price-cur">RON</span>
-            </span>
+        {isDraft ? (
+          /* ── Draft: progres completare ── */
+          <div className="ac-draft-box">
+            {missing.length === 0 ? (
+              <span className="ac-draft-ready">✅ Gata de publicare</span>
+            ) : (
+              <span className="ac-draft-missing">
+                <strong>Lipsesc:</strong> {missing.join(', ')}
+              </span>
+            )}
           </div>
-          {savings > 0 && (
-            <span className="ac-savings" title="Reducere față de prețul de pornire">
-              ▼ {savings}%
-            </span>
-          )}
-        </div>
+        ) : (
+          <>
+            {/* Price strip */}
+            <div className="ac-price-strip">
+              <div className="ac-price-main">
+                <span className="ac-price-label">
+                  {hasBids ? 'Cea mai bună ofertă' : 'Preț de pornire'}
+                </span>
+                <span className={`ac-price-value ${hasBids ? 'has-bids' : ''}`}>
+                  {fmt(auction.currentPrice)} <span className="ac-price-cur">RON</span>
+                </span>
+              </div>
+              {savings > 0 && (
+                <span className="ac-savings" title="Reducere față de prețul de pornire">
+                  ▼ {savings}%
+                </span>
+              )}
+            </div>
 
-        {/* Secondary price meta */}
-        {(auction.targetPrice || hasBids) && (
-          <div className="ac-price-meta">
-            {auction.targetPrice && <span>Țintă: <strong>{fmt(auction.targetPrice)} RON</strong></span>}
-            {hasBids && <span>Buget inițial: <strong>{fmt(startPrice)} RON</strong></span>}
-          </div>
+            {/* Secondary price meta */}
+            {(auction.targetPrice || hasBids) && (
+              <div className="ac-price-meta">
+                {auction.targetPrice && <span>Țintă: <strong>{fmt(auction.targetPrice)} RON</strong></span>}
+                {hasBids && <span>Buget inițial: <strong>{fmt(startPrice)} RON</strong></span>}
+              </div>
+            )}
+          </>
         )}
 
         {/* Meta row */}
@@ -77,23 +146,43 @@ export default function AuctionCard({ auction }) {
           <span className="ac-meta-item">
             <IconPin /> {auction.location?.city || 'Nespecificat'}
           </span>
-          <span className={`ac-meta-item ${isExpired ? 'expired' : isUrgent ? 'urgent' : ''}`}>
-            <IconClock /> {timeLeft}
+          <span className={`ac-meta-item ${quantity ? '' : 'ac-meta-faded'}`}>
+            <IconBox /> {quantity ? `Cantitate: ${quantity}` : 'Cantitate necompletată'}
           </span>
-          <span className="ac-meta-item">
-            <IconBids /> {hasBids ? `${bidCount} ${bidCount === 1 ? 'ofertă' : 'oferte'}` : 'Fără oferte'}
-          </span>
+          {!isDraft && (
+            <span className={`ac-meta-item ${isExpired ? 'expired' : isUrgent ? 'urgent' : ''}`}>
+              <IconClock /> {timeLeft}
+            </span>
+          )}
+          {!isDraft && (
+            <span className="ac-meta-item">
+              <IconBids /> {hasBids ? `${bidCount} ${bidCount === 1 ? 'ofertă' : 'oferte'}` : 'Fără oferte'}
+            </span>
+          )}
         </div>
 
         {/* CTA */}
         <div className="ac-cta">
-          <button className="ac-btn ac-btn-primary" onClick={goDetail}>
-            Vezi detalii
-          </button>
-          {hasBids && (
-            <button className="ac-btn ac-btn-secondary" onClick={goDetail}>
-              Compară oferte
-            </button>
+          {ownerDraft ? (
+            <>
+              <button className="ac-btn ac-btn-primary" onClick={goEdit}>
+                Continuă editarea
+              </button>
+              <button className="ac-btn ac-btn-danger" onClick={deleteDraft} disabled={deleting}>
+                {deleting ? '...' : 'Șterge draft'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="ac-btn ac-btn-primary" onClick={goDetail}>
+                Vezi detalii
+              </button>
+              {hasBids && (
+                <button className="ac-btn ac-btn-secondary" onClick={goDetail}>
+                  Compară oferte
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -138,6 +227,14 @@ function IconBids() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+  );
+}
+function IconBox() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
     </svg>
   );
 }
@@ -192,10 +289,21 @@ const cardCSS = `
   color: var(--text-heading); line-height: 1.35;
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
+.ac-title-empty { color: var(--text-muted); font-style: italic; }
 .ac-desc {
   font-size: 0.8125rem; color: var(--text-muted); margin: 0 0 12px; line-height: 1.5;
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
+
+/* Draft box */
+.ac-draft-box {
+  background: var(--ice-blue); border: 1px solid var(--border-light);
+  border-radius: var(--radius-md); padding: 9px 12px; margin-bottom: 8px;
+  font-size: 0.75rem; line-height: 1.45;
+}
+.ac-draft-missing { color: var(--warning-amber); }
+.ac-draft-missing strong { color: #92400E; }
+.ac-draft-ready { color: var(--success-green); font-weight: 600; }
 
 /* Price strip */
 .ac-price-strip {
@@ -237,6 +345,7 @@ const cardCSS = `
 .ac-meta-item svg { flex-shrink: 0; }
 .ac-meta-item.urgent  { color: var(--warning-amber); font-weight: 600; }
 .ac-meta-item.expired { color: var(--error-red); font-weight: 600; }
+.ac-meta-faded { color: var(--muted-gray); font-style: italic; }
 
 /* CTA */
 .ac-cta { display: flex; gap: 8px; margin-top: 12px; }
@@ -250,4 +359,7 @@ const cardCSS = `
 .ac-btn-primary:hover { background: #009688; }
 .ac-btn-secondary { background: transparent; color: var(--action-blue); border: 1px solid var(--border); }
 .ac-btn-secondary:hover { border-color: var(--action-blue); background: var(--ice-blue); }
+.ac-btn-danger { flex: 0 0 auto; background: transparent; color: var(--error-red); border: 1px solid #FCA5A5; }
+.ac-btn-danger:hover:not(:disabled) { background: #FEF2F2; border-color: var(--error-red); }
+.ac-btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 `;

@@ -2,15 +2,17 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth }    from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { API_URL }    from '../config';
+import { fmtDeadline } from '../utils/format';
 
 // Câmpuri marcate ca importante în diff view (le evidențiem vizual)
-const IMPORTANT = new Set(['targetPrice', 'deadline', 'location', 'category', 'description']);
+const IMPORTANT = new Set(['targetPrice', 'deadline', 'location', 'category', 'description', 'quantity']);
 
 // Label-uri human-readable pentru câmpuri
 const FIELD_LABELS = {
   title:       'Titlu',
   description: 'Descriere',
   category:    'Categorie',
+  quantity:    'Cantitate',
   tags:        'Taguri',
   targetPrice: 'Preț țintă (RON)',
   deadline:    'Deadline',
@@ -20,7 +22,7 @@ const FIELD_LABELS = {
 
 function formatFieldValue(field, val) {
   if (val === null || val === undefined || val === '') return '—';
-  if (field === 'deadline') return new Date(val).toLocaleString('ro-RO');
+  if (field === 'deadline') return fmtDeadline(val, '—');
   if (field === 'autoExtend') return val ? 'Da' : 'Nu';
   if (field === 'tags') return Array.isArray(val) ? val.join(', ') || '—' : val;
   if (field === 'location' && typeof val === 'object') return val.address || val.city || JSON.stringify(val);

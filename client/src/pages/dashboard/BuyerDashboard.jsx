@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useNavigate }                  from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth }                      from '../../context/AuthContext';
 import AuctionCard, { AuctionCardSkeleton } from '../../components/AuctionCard';
 import StatCard                         from '../../components/StatCard';
@@ -12,11 +12,16 @@ function isExpiringSoon(deadline) {
   return diff > 0 && diff <= 48 * 3600000;
 }
 
+const VALID_TABS = ['active', 'closed', 'cancelled', 'draft'];
+
 export default function BuyerDashboard() {
   const { user, token } = useAuth();
   const navigate        = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [allAuctions, setAllAuctions] = useState([]);
-  const [statusFilter,  setStatusFilter]  = useState('active');
+  const [statusFilter,  setStatusFilter]  = useState(
+    VALID_TABS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'active'
+  );
   const [loading,       setLoading]       = useState(true);
 
   /* Licitațiile pentru statusul curent */
@@ -66,6 +71,7 @@ export default function BuyerDashboard() {
   const handleStatusChange = (s) => {
     setStatusFilter(s);
     filters.clearAll();
+    setSearchParams(s === 'active' ? {} : { tab: s }, { replace: true });
   };
 
   return (
@@ -188,7 +194,7 @@ export default function BuyerDashboard() {
           </div>
         ) : (
           <div className="auction-grid">
-            {filtered.map(a => <AuctionCard key={a._id} auction={a} />)}
+            {filtered.map(a => <AuctionCard key={a._id} auction={a} onChanged={fetchMyAuctions} />)}
           </div>
         )}
       </div>

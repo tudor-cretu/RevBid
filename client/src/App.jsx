@@ -18,6 +18,7 @@ import PublicProfile     from './pages/PublicProfile';
 import Messages          from './pages/Messages';
 import LandingPage       from './pages/LandingPage';
 import MyBids            from './pages/MyBids';
+import Notifications     from './pages/Notifications';
 import './App.css';
 
 function ProtectedRoute({ children }) {
@@ -51,6 +52,7 @@ function App() {
           <Route path="/auth/callback"    element={<AuthCallback />} />
           <Route path="/dashboard"      element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/auction/create"              element={<ProtectedRoute><CreateAuction /></ProtectedRoute>} />
+          <Route path="/auction/:id/edit"            element={<ProtectedRoute><CreateAuction /></ProtectedRoute>} />
           <Route path="/auction/:id"                 element={<ProtectedRoute><AuctionDetail /></ProtectedRoute>} />
           <Route path="/auction/:id/edit-request"    element={<ProtectedRoute><AuctionRequestForm /></ProtectedRoute>} />
           <Route path="/my-bids"                     element={<ProtectedRoute><MyBids /></ProtectedRoute>} />
@@ -59,6 +61,7 @@ function App() {
           <Route path="/support"        element={<ProtectedRoute><Support /></ProtectedRoute>} />
           <Route path="/profile/:id"    element={<ProtectedRoute><PublicProfile /></ProtectedRoute>} />
           <Route path="/messages"       element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+          <Route path="/notifications"  element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
           <Route path="*"               element={<Navigate to="/" />} />
         </Routes>
       </BrowserRouter>

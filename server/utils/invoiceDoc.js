@@ -43,8 +43,14 @@ const fmtMoney = (n, cur) =>
   `${Number(n || 0).toLocaleString('ro-RO')} ${cur || 'RON'}`;
 const fmtDate = d =>
   d ? new Date(d).toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' }) : '—';
-const fmtDT = d =>
-  d ? new Date(d).toLocaleString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+/* Format standardizat dd/mm/yyyy HH:mm (24h, zero-padding). */
+const fmtDT = d => {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return '—';
+  const p = n => String(n).padStart(2, '0');
+  return `${p(dt.getDate())}/${p(dt.getMonth() + 1)}/${dt.getFullYear()} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+};
 
 /**
  * @param {object} inv  Invoice (doc Mongoose sau obiect simplu)
@@ -156,6 +162,7 @@ function buildInvoicePdf(inv) {
       ['Titlul licitației', inv.auctionTitle || '—'],
       ['Identificator',     String(inv.auction || '—')],
       ['Categorie',         inv.category || '—'],
+      ['Cantitate',         inv.quantity || '—'],
       ['Termen-limită',     fmtDT(inv.deadline)],
       ['Data finalizării',  fmtDT(inv.finalizedAt)],
       ['Stare',             'Finalizată · câștigător desemnat'],

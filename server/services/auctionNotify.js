@@ -72,6 +72,7 @@ async function getOrCreateInvoice(auction, winningBid) {
     currency:     'RON',
     auctionTitle: auction.title,
     category:     auction.category,
+    quantity:     auction.quantity || '',
     description:  auction.description,
     buyerName:    buyerLabel || '—',
     supplierName: suppLabel  || '—',
@@ -204,6 +205,7 @@ async function finalizeAuctionNotifications(io, auctionId) {
         auctionTitle: auction.title,
         finalPrice,
         buyerName:    fullName(auction.buyer),
+        quantity:     auction.quantity || '',
         auctionId:    idStr,
         hasInvoice,
       }), 'winner', pdfAttachment);
@@ -225,6 +227,7 @@ async function finalizeAuctionNotifications(io, auctionId) {
         firstName:    auction.buyer.firstName,
         auctionTitle: auction.title,
         finalPrice, winnerName, bidCount,
+        quantity:     auction.quantity || '',
         auctionId:    idStr,
         hasInvoice,
       }), 'buyer', pdfAttachment);

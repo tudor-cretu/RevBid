@@ -88,7 +88,7 @@ const newBidTemplate = ({ firstName, auctionTitle, amount, auctionId, isOwner = 
 });
 
 /* ── Finalizare: câștigător ────────────────────────────────────── */
-const auctionWonTemplate = ({ firstName, auctionTitle, finalPrice, buyerName, auctionId, hasInvoice = false }) => ({
+const auctionWonTemplate = ({ firstName, auctionTitle, finalPrice, buyerName, quantity, auctionId, hasInvoice = false }) => ({
   subject: `RevBid — Felicitări! Ai câștigat licitația "${auctionTitle}"`,
   html: layout({
     heading: '🏆 Felicitări, ai câștigat licitația!',
@@ -98,6 +98,7 @@ const auctionWonTemplate = ({ firstName, auctionTitle, finalPrice, buyerName, au
       priceBox('Ofertă câștigătoare', `${finalPrice} RON`, '#17B26A', '#DCFCE7') +
       `<table style="width:100%;border-collapse:collapse;margin-bottom:18px">
         ${metaRow('Licitație', auctionTitle)}
+        ${quantity ? metaRow('Cantitate', quantity) : ''}
         ${buyerName ? metaRow('Inițiator', buyerName) : ''}
       </table>` +
       (hasInvoice ? INVOICE_NOTE : '') +
@@ -109,7 +110,7 @@ const auctionWonTemplate = ({ firstName, auctionTitle, finalPrice, buyerName, au
 });
 
 /* ── Finalizare: buyer ─────────────────────────────────────────── */
-const auctionEndedBuyerTemplate = ({ firstName, auctionTitle, finalPrice, winnerName, bidCount, auctionId, hasInvoice = false }) => ({
+const auctionEndedBuyerTemplate = ({ firstName, auctionTitle, finalPrice, winnerName, bidCount, quantity, auctionId, hasInvoice = false }) => ({
   subject: `RevBid — Licitația ta "${auctionTitle}" s-a încheiat`,
   html: layout({
     heading: finalPrice != null ? 'Licitația ta s-a încheiat' : 'Licitația ta s-a încheiat fără oferte',
@@ -119,6 +120,7 @@ const auctionEndedBuyerTemplate = ({ firstName, auctionTitle, finalPrice, winner
     bodyHtml: finalPrice != null
       ? priceBox('Ofertă câștigătoare', `${finalPrice} RON`, '#00A99D') +
         `<table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+          ${quantity ? metaRow('Cantitate', quantity) : ''}
           ${metaRow('Furnizor câștigător', winnerName || '—')}
           ${metaRow('Total oferte primite', bidCount)}
         </table>` +

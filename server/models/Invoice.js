@@ -40,6 +40,7 @@ const invoiceSchema = new mongoose.Schema({
   currency:      { type: String, default: 'RON' },
   auctionTitle:  { type: String, default: '' },
   category:      { type: String, default: '' },
+  quantity:      { type: String, default: '' },
   description:   { type: String, default: '' },
   buyerName:     { type: String, default: '' },
   supplierName:  { type: String, default: '' },
