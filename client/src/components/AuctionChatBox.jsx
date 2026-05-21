@@ -95,9 +95,9 @@ export default function AuctionChatBox({ auctionId, socket }) {
   return (
     <div className="card chat-box">
       <div className="card-header">
-        <h3 className="card-title">💬 Chat licitatie</h3>
+        <h3 className="card-title">💬 Chat licitație</h3>
         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          Cumparatorul si furnizorii care au ofertat pot comunica aici
+          Cumpărătorul și furnizorii care au ofertat pot comunica aici
         </span>
       </div>
 
@@ -105,7 +105,7 @@ export default function AuctionChatBox({ auctionId, socket }) {
         {messages.length === 0 ? (
           <div className="empty-state" style={{ padding: '2rem' }}>
             <div className="empty-state-icon">💬</div>
-            <p className="empty-state-text">Niciun mesaj inca. Fii primul!</p>
+            <p className="empty-state-text">Niciun mesaj încă. Fii primul!</p>
           </div>
         ) : (
           messages.map((msg, i) => {
@@ -151,7 +151,7 @@ export default function AuctionChatBox({ auctionId, socket }) {
       <div className="chat-input-row">
         <textarea
           className="form-input"
-          placeholder="Scrie un mesaj... (Enter pentru trimite)"
+          placeholder="Scrie un mesaj... (Enter pentru a trimite)"
           value={input}
           onChange={e => { setInput(e.target.value); setError(''); }}
           onKeyDown={handleKeyDown}

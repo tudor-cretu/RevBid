@@ -12,7 +12,7 @@ export default function LandingPage() {
           <Logo size="md" onClick={() => navigate('/')} />
           <div className="l-nav-actions">
             <button className="btn btn-ghost" onClick={() => navigate('/login')}>Autentificare</button>
-            <button className="btn btn-primary" onClick={() => navigate('/register')}>Incepe gratuit</button>
+            <button className="btn btn-primary" onClick={() => navigate('/register')}>Începe gratuit</button>
           </div>
         </div>
       </nav>
@@ -21,19 +21,19 @@ export default function LandingPage() {
       <section className="l-hero">
         <div className="l-hero-content">
           <div className="l-hero-badge">
-            <span className="badge badge-teal">🚀 Platforma #1 de licitatii inverse</span>
+            <span className="badge badge-teal">🚀 Platforma #1 de licitații inverse</span>
           </div>
           <h1 className="l-hero-title">
-            Preturile <span className="l-hero-accent">scad</span>,<br />
+            Prețurile <span className="l-hero-accent">scad</span>,<br />
             economiile tale <span className="l-hero-accent">cresc</span>
           </h1>
           <p className="l-hero-desc">
-            Posteaza cererea ta si lasa furnizorii sa concureze pentru cel mai bun pret.
-            RevBid transforma achizitiile intr-un avantaj competitiv.
+            Postează cererea ta și lasă furnizorii să concureze pentru cel mai bun preț.
+            RevBid transformă achizițiile într-un avantaj competitiv.
           </p>
           <div className="l-hero-ctas">
             <button className="btn btn-primary btn-lg" onClick={() => navigate('/register')}>
-              Creeaza cont gratuit
+              Creează cont gratuit
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </button>
             <button className="btn btn-outline btn-lg" onClick={() => navigate('/login')}>
@@ -41,7 +41,7 @@ export default function LandingPage() {
             </button>
           </div>
           <div className="l-hero-stats">
-            <div className="l-hero-stat"><span className="l-hero-stat-val">500+</span><span className="l-hero-stat-lbl">Licitatii finalizate</span></div>
+            <div className="l-hero-stat"><span className="l-hero-stat-val">500+</span><span className="l-hero-stat-lbl">Licitații finalizate</span></div>
             <div className="l-hero-stat-sep" />
             <div className="l-hero-stat"><span className="l-hero-stat-val">23%</span><span className="l-hero-stat-lbl">Economie medie</span></div>
             <div className="l-hero-stat-sep" />
@@ -51,14 +51,14 @@ export default function LandingPage() {
         <div className="l-hero-visual">
           <div className="l-hero-card">
             <div className="l-hero-card-header">
-              <span className="badge badge-solid-teal">Activa</span>
+              <span className="badge badge-solid-teal">Activă</span>
               <span style={{ fontSize: '0.75rem', color: 'var(--warning-amber)', fontWeight: 600 }}>⏱ 2h 34m</span>
             </div>
             <h4 style={{ margin: '10px 0 6px', fontSize: '0.9375rem', color: 'var(--text-heading)' }}>Laptop Business i7, 16GB RAM</h4>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '14px' }}>Caut laptop performant pentru echipa de dezvoltare...</p>
             <div style={{ background: 'var(--ice-blue)', borderRadius: 'var(--radius-md)', padding: '12px', marginBottom: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                <div><p style={{ fontSize: '0.625rem', color: 'var(--text-muted)', margin: 0, textTransform: 'uppercase', fontWeight: 500 }}>Pret curent</p><p style={{ fontSize: '1.375rem', fontWeight: 700, color: 'var(--bid-teal)', margin: 0 }}>4,200 RON</p></div>
+                <div><p style={{ fontSize: '0.625rem', color: 'var(--text-muted)', margin: 0, textTransform: 'uppercase', fontWeight: 500 }}>Preț curent</p><p style={{ fontSize: '1.375rem', fontWeight: 700, color: 'var(--bid-teal)', margin: 0 }}>4,200 RON</p></div>
                 <span className="badge badge-teal">↓ 16%</span>
               </div>
             </div>
@@ -74,25 +74,25 @@ export default function LandingPage() {
       {/* How it works */}
       <section className="l-section">
         <div className="l-section-inner">
-          <h2 className="l-section-title">Cum functioneaza?</h2>
-          <p className="l-section-desc">Trei pasi simpli catre cel mai bun pret</p>
+          <h2 className="l-section-title">Cum funcționează?</h2>
+          <p className="l-section-desc">Trei pași simpli către cel mai bun preț</p>
           <div className="l-steps">
             <div className="l-step">
               <div className="l-step-num">1</div>
-              <h3>Posteaza cererea</h3>
-              <p>Descrie ce produs sau serviciu cauti, seteaza un pret de start si un deadline.</p>
+              <h3>Postează cererea</h3>
+              <p>Descrie ce produs sau serviciu cauți, setează un preț de start și un deadline.</p>
             </div>
             <div className="l-step-arrow">→</div>
             <div className="l-step">
               <div className="l-step-num">2</div>
-              <h3>Furnizorii oferteza</h3>
-              <p>Furnizorii verificati concureaza intre ei, scazand pretul in timp real.</p>
+              <h3>Furnizorii ofertează</h3>
+              <p>Furnizorii verificați concurează între ei, scăzând prețul în timp real.</p>
             </div>
             <div className="l-step-arrow">→</div>
             <div className="l-step">
               <div className="l-step-num">3</div>
-              <h3>Alegi cea mai buna oferta</h3>
-              <p>Compari ofertele, verifici furnizorii si accepti cea mai avantajoasa propunere.</p>
+              <h3>Alegi cea mai bună ofertă</h3>
+              <p>Compari ofertele, verifici furnizorii și accepți cea mai avantajoasă propunere.</p>
             </div>
           </div>
         </div>
@@ -103,12 +103,12 @@ export default function LandingPage() {
         <div className="l-section-inner">
           <h2 className="l-section-title">De ce RevBid?</h2>
           <div className="l-benefits">
-            <div className="l-benefit"><span className="l-benefit-icon">📉</span><h4>Preturi competitive</h4><p>Furnizorii concureaza, tu obtii cel mai bun pret din piata.</p></div>
-            <div className="l-benefit"><span className="l-benefit-icon">⚡</span><h4>Rapid si eficient</h4><p>Primesti oferte in minute, nu in zile. Totul in timp real.</p></div>
-            <div className="l-benefit"><span className="l-benefit-icon">🔒</span><h4>Transparent si sigur</h4><p>Toate ofertele sunt vizibile. Fara negocieri ascunse.</p></div>
-            <div className="l-benefit"><span className="l-benefit-icon">🏆</span><h4>Furnizori verificati</h4><p>Fiecare furnizor are profil, rating si istoric verificabil.</p></div>
-            <div className="l-benefit"><span className="l-benefit-icon">💬</span><h4>Comunicare directa</h4><p>Chat integrat cu furnizorii, direct pe pagina licitatiei.</p></div>
-            <div className="l-benefit"><span className="l-benefit-icon">📊</span><h4>Grafice si statistici</h4><p>Urmareste evolutia pretului si analizeaza ofertele primate.</p></div>
+            <div className="l-benefit"><span className="l-benefit-icon">📉</span><h4>Prețuri competitive</h4><p>Furnizorii concurează, tu obții cel mai bun preț din piață.</p></div>
+            <div className="l-benefit"><span className="l-benefit-icon">⚡</span><h4>Rapid și eficient</h4><p>Primești oferte în minute, nu în zile. Totul în timp real.</p></div>
+            <div className="l-benefit"><span className="l-benefit-icon">🔒</span><h4>Transparent și sigur</h4><p>Toate ofertele sunt vizibile. Fără negocieri ascunse.</p></div>
+            <div className="l-benefit"><span className="l-benefit-icon">🏆</span><h4>Furnizori verificați</h4><p>Fiecare furnizor are profil, rating și istoric verificabil.</p></div>
+            <div className="l-benefit"><span className="l-benefit-icon">💬</span><h4>Comunicare directă</h4><p>Chat integrat cu furnizorii, direct pe pagina licitației.</p></div>
+            <div className="l-benefit"><span className="l-benefit-icon">📊</span><h4>Grafice și statistici</h4><p>Urmărește evoluția prețului și analizează ofertele primite.</p></div>
           </div>
         </div>
       </section>
@@ -116,12 +116,12 @@ export default function LandingPage() {
       {/* CTA */}
       <section className="l-cta">
         <div className="l-section-inner" style={{ textAlign: 'center' }}>
-          <h2 style={{ color: '#fff', fontSize: '2rem', marginBottom: '12px' }}>Incepe sa economisesti astazi</h2>
+          <h2 style={{ color: '#fff', fontSize: '2rem', marginBottom: '12px' }}>Începe să economisești astăzi</h2>
           <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '1.125rem', marginBottom: '2rem', maxWidth: '500px', margin: '0 auto 2rem' }}>
-            Crearea contului este gratuita. Fara card, fara obligatii.
+            Crearea contului este gratuită. Fără card, fără obligații.
           </p>
           <button className="btn btn-lg" style={{ background: 'var(--bid-teal)', color: '#fff', padding: '16px 36px', fontSize: '1rem' }} onClick={() => navigate('/register')}>
-            Creeaza cont gratuit →
+            Creează cont gratuit →
           </button>
         </div>
       </section>
@@ -135,12 +135,12 @@ export default function LandingPage() {
                 <Logo size="md" variant="light" />
               </div>
               <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', maxWidth: '280px' }}>
-                Platforma de licitatii inverse pentru achizitii inteligente.
+                Platformă de licitații inverse pentru achiziții inteligente.
               </p>
             </div>
             <div className="l-footer-links">
               <div><h5 style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>Platforma</h5>
-                <a href="#" onClick={e => { e.preventDefault(); navigate('/register'); }}>Inregistrare</a>
+                <a href="#" onClick={e => { e.preventDefault(); navigate('/register'); }}>Înregistrare</a>
                 <a href="#" onClick={e => { e.preventDefault(); navigate('/login'); }}>Autentificare</a>
               </div>
               <div><h5 style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>Contact</h5>

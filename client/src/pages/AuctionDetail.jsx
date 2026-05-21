@@ -254,7 +254,7 @@ export default function AuctionDetail() {
         setRequestToast('error:' + data.message);
       } else {
         setDeleteModal(false); setDeleteReason('');
-        setRequestToast('ok:Cererea de stergere a fost trimisa catre admin.');
+        setRequestToast('ok:Cererea de ștergere a fost trimisă către admin.');
         fetchMyRequests();
       }
     } catch { setRequestToast('error:Eroare de conexiune.'); }
@@ -349,7 +349,7 @@ export default function AuctionDetail() {
   };
 
   if (loading) return <div className="loading-state" style={{ padding: '4rem 0', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /><p className="loading-text">Se încarcă licitația...</p></div>;
-  if (!auction) return <div className="empty-state"><div className="empty-state-icon">❌</div><p className="empty-state-title">Licitatia nu exista.</p></div>;
+  if (!auction) return <div className="empty-state"><div className="empty-state-icon">❌</div><p className="empty-state-title">Licitația nu există.</p></div>;
 
   const isActive   = auction.status === 'active';
   const isSupplier = user?.role === 'supplier';

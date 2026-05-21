@@ -56,8 +56,8 @@ export default function PublicProfile() {
 
   const handleMessage = () => { navigate(`/messages?to=${id}&name=${profile.firstName} ${profile.lastName}`); };
 
-  if (loading) return <p className="loading-text">Se incarca...</p>;
-  if (!profile) return <div className="empty-state"><div className="empty-state-icon">❌</div><p className="empty-state-title">Profil negasit.</p></div>;
+  if (loading) return <p className="loading-text">Se încarcă...</p>;
+  if (!profile) return <div className="empty-state"><div className="empty-state-icon">❌</div><p className="empty-state-title">Profil negăsit.</p></div>;
 
   const joinDate = new Date(profile.createdAt).toLocaleDateString('ro-RO', { month: 'long', year: 'numeric' });
 
@@ -79,7 +79,7 @@ export default function PublicProfile() {
               {profile.companyName && <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: '0 0 8px' }}>{profile.companyName}</p>}
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '6px' }}>
                 <span className={`badge ${profile.role === 'buyer' ? 'badge-blue' : 'badge-teal'}`}>
-                  {profile.role === 'buyer' ? 'Cumparator' : 'Furnizor'}
+                  {profile.role === 'buyer' ? 'Cumpărător' : 'Furnizor'}
                 </span>
                 {profile.city && <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>📍 {profile.city}</span>}
                 <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>📅 Membru din {joinDate}</span>
@@ -101,7 +101,7 @@ export default function PublicProfile() {
               {profile.role === 'buyer' ? (
                 <div style={{ textAlign: 'center', flex: 1 }}>
                   <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--bid-teal)' }}>{stats.auctionsCount}</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>Licitatii create</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>Licitații create</p>
                 </div>
               ) : (<>
                 <div style={{ textAlign: 'center', flex: 1 }}>
@@ -110,7 +110,7 @@ export default function PublicProfile() {
                 </div>
                 <div style={{ textAlign: 'center', flex: 1 }}>
                   <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--success-green)' }}>{stats.wonCount}</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>Licitatii castigate</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>Licitații câștigate</p>
                 </div>
               </>)}
             </div>
@@ -191,7 +191,7 @@ export default function PublicProfile() {
 
         {profile.role === 'buyer' && auctions.length > 0 && (
           <div className="card">
-            <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 1rem', color: 'var(--text-heading)' }}>Licitatii active</h2>
+            <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 1rem', color: 'var(--text-heading)' }}>Licitații active</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {auctions.map(a => (
                 <div key={a._id} className="card-hover" onClick={() => navigate(`/auction/${a._id}`)}

@@ -3,12 +3,12 @@ import { useAuth }  from '../context/AuthContext';
 import { API_URL }  from '../config';
 
 const FAQ = [
-  { q: 'Cum creez o licitatie?', a: 'Din dashboard-ul tau de cumparator, apasa butonul "+ Licitatie noua". Completeaza titlul, descrierea, pretul de start si deadline-ul. Poti adauga si fotografii si o locatie pe harta.' },
-  { q: 'Cum depun o oferta?', a: 'Intra pe pagina unei licitatii active ca furnizor. In coloana din dreapta vei vedea formularul de ofertare. Oferta ta trebuie sa fie mai mica decat pretul curent.' },
-  { q: 'Ce se intampla la sfarsitul licitatiei?', a: 'La expirarea deadline-ului, furnizorul cu oferta cea mai mica castiga. Atat cumparatorul cat si furnizorul castigator primesc un email de notificare.' },
-  { q: 'Ce este auto-extend?', a: 'Daca activezi optiunea "Auto-extend" la crearea licitatiei, si o oferta vine in ultimele 2 minute, deadline-ul se prelungeste automat cu 5 minute pentru a da sansa tuturor furnizorilor sa reactioneze.' },
-  { q: 'Cum imi verific contul?', a: 'La inregistrare cu email, vei primi un cod de 6 cifre. Introdu-l pe pagina de verificare. Codul expira in 15 minute. Daca nu l-ai primit, foloseste butonul "Retrimite".' },
-  { q: 'Pot folosi RevBid pe mobil?', a: 'Da, interfata este responsive si functioneaza pe orice dispozitiv cu browser modern.' },
+  { q: 'Cum creez o licitație?', a: 'Din dashboard-ul tău de cumpărător, apasă butonul "+ Licitație nouă". Completează titlul, descrierea, prețul de start și deadline-ul. Poți adăuga și fotografii și o locație pe hartă.' },
+  { q: 'Cum depun o ofertă?', a: 'Intră pe pagina unei licitații active ca furnizor. În coloana din dreapta vei vedea formularul de ofertare. Oferta ta trebuie să fie mai mică decât prețul curent.' },
+  { q: 'Ce se întâmplă la sfârșitul licitației?', a: 'La expirarea deadline-ului, furnizorul cu oferta cea mai mică câștigă. Atât cumpărătorul cât și furnizorul câștigător primesc un email de notificare.' },
+  { q: 'Ce este auto-extend?', a: 'Dacă activezi opțiunea "Auto-extend" la crearea licitației, și o ofertă vine în ultimele 2 minute, deadline-ul se prelungește automat cu 5 minute pentru a da șansa tuturor furnizorilor să reacționeze.' },
+  { q: 'Cum îmi verific contul?', a: 'La înregistrare cu email, vei primi un cod de 6 cifre. Introdu-l pe pagina de verificare. Codul expiră în 15 minute. Dacă nu l-ai primit, folosește butonul "Retrimite".' },
+  { q: 'Pot folosi RevBid pe mobil?', a: 'Da, interfața este responsive și funcționează pe orice dispozitiv cu browser modern.' },
 ];
 
 export default function Support() {
@@ -27,7 +27,7 @@ export default function Support() {
       const res = await fetch(`${API_URL}/api/support`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ...form, email: user.email, name: `${user.firstName} ${user.lastName}` }) });
       if (!res.ok) throw new Error();
       setSent(true); setForm({ subject: '', message: '' });
-    } catch { setError('Eroare la trimitere. Incearca din nou.'); } finally { setLoading(false); }
+    } catch { setError('Eroare la trimitere. Încearcă din nou.'); } finally { setLoading(false); }
   };
 
   return (
@@ -38,7 +38,7 @@ export default function Support() {
 
         {/* FAQ */}
         <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 1rem', color: 'var(--text-heading)' }}>Intrebari frecvente</h2>
+          <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 1rem', color: 'var(--text-heading)' }}>Întrebări frecvente</h2>
           {FAQ.map((item, i) => (
             <div key={i} style={{ borderBottom: i < FAQ.length - 1 ? '1px solid var(--border-light)' : 'none' }}>
               <button onClick={() => setOpenFaq(openFaq === i ? null : i)} style={{
@@ -61,19 +61,19 @@ export default function Support() {
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 4px', color: 'var(--text-heading)' }}>Trimite un mesaj</h2>
           <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-            Nu ai gasit raspunsul? Trimite-ne un mesaj si te vom contacta in maxim 24 ore.
+            Nu ai găsit răspunsul? Trimite-ne un mesaj și te vom contacta în maxim 24 ore.
           </p>
 
           {sent ? (
-            <div className="alert alert-success">✅ Mesajul a fost trimis! Te vom contacta la <strong>{user?.email}</strong> in curand.</div>
+            <div className="alert alert-success">✅ Mesajul a fost trimis! Te vom contacta la <strong>{user?.email}</strong> în curând.</div>
           ) : (
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--ice-blue)', padding: '10px 14px', borderRadius: 'var(--radius-md)', fontSize: '0.8125rem', marginBottom: '8px' }}>
                 <span style={{ color: 'var(--text-muted)' }}>De la:</span>
                 <span style={{ color: 'var(--text-heading)', fontWeight: 500 }}>{user?.firstName} {user?.lastName} · {user?.email}</span>
               </div>
-              <div className="form-group"><label className="form-label">Subiect</label><input className="form-input" name="subject" placeholder="ex: Problema la ofertare" value={form.subject} onChange={handleChange} required /></div>
-              <div className="form-group"><label className="form-label">Mesaj</label><textarea className="form-input" name="message" placeholder="Descrie problema sau intrebarea ta..." value={form.message} onChange={handleChange} required style={{ height: '120px', resize: 'vertical' }} /></div>
+              <div className="form-group"><label className="form-label">Subiect</label><input className="form-input" name="subject" placeholder="ex: Problemă la ofertare" value={form.subject} onChange={handleChange} required /></div>
+              <div className="form-group"><label className="form-label">Mesaj</label><textarea className="form-input" name="message" placeholder="Descrie problema sau întrebarea ta..." value={form.message} onChange={handleChange} required style={{ height: '120px', resize: 'vertical' }} /></div>
               {error && <div className="form-error">{error}</div>}
               <button className="btn btn-primary btn-block" type="submit" disabled={loading}>{loading ? 'Se trimite...' : 'Trimite mesajul'}</button>
             </form>

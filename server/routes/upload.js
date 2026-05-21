@@ -17,7 +17,7 @@ router.post('/auction/:id', authMiddleware, upload.array('images', 5), async (re
           entityType: 'auction',
           entityId:   req.params.id,
         });
-      return res.status(404).json({ message: 'Licitatia nu exista' });
+      return res.status(404).json({ message: 'Licitația nu există' });
     }
 
     if (auction.buyer.toString() !== req.user.id) {
@@ -36,7 +36,7 @@ router.post('/auction/:id', authMiddleware, upload.array('images', 5), async (re
           entityType: 'auction',
           entityId:   req.params.id,
         });
-      return res.status(400).json({ message: 'Nicio imagine trimisa' });
+      return res.status(400).json({ message: 'Nicio imagine trimisă' });
     }
 
     const newImages = req.files.map((file, index) => ({
@@ -60,7 +60,7 @@ router.post('/auction/:id', authMiddleware, upload.array('images', 5), async (re
       });
 
     res.json({
-      message: `${req.files.length} imagine(i) incarcate`,
+      message: `${req.files.length} imagine(i) încărcate`,
       images:  auction.images,
     });
 
@@ -77,7 +77,7 @@ router.post('/auction/:id', authMiddleware, upload.array('images', 5), async (re
 router.delete('/image/:auctionId/:publicId', authMiddleware, async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.auctionId);
-    if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
+    if (!auction) return res.status(404).json({ message: 'Licitația nu există' });
 
     if (auction.buyer.toString() !== req.user.id) {
       logger.fromReq(req).security(EVENTS.UPLOAD.UNAUTHORIZED,
@@ -102,14 +102,14 @@ router.delete('/image/:auctionId/:publicId', authMiddleware, async (req, res) =>
         metadata:   { publicId, remainingImages: auction.images.length },
       });
 
-    res.json({ message: 'Imaginea a fost stearsa', images: auction.images });
+    res.json({ message: 'Imaginea a fost ștearsă', images: auction.images });
 
   } catch (err) {
     logger.logReqError(req, EVENTS.UPLOAD.DELETE_FAILED, err, {
       entityType: 'auction',
       entityId:   req.params.auctionId,
     });
-    res.status(500).json({ message: 'Eroare stergere', error: err.message });
+    res.status(500).json({ message: 'Eroare ștergere', error: err.message });
   }
 });
 

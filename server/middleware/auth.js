@@ -16,7 +16,7 @@ module.exports = function authMiddleware(req, res, next) {
       'Request fără token de autentificare', {
         metadata: { path: req.path },
       });
-    return res.status(401).json({ message: 'Token lipsa' });
+    return res.status(401).json({ message: 'Token lipsă' });
   }
 
   const token = authHeader.split(' ')[1];

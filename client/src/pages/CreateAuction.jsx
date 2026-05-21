@@ -243,28 +243,28 @@ export default function CreateAuction() {
       <div className="container-md" style={{ maxWidth: '720px' }}>
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '1.5rem' }}>
-            <button className="btn btn-outline btn-sm" onClick={() => navigate('/dashboard')}>← Inapoi</button>
+            <button className="btn btn-outline btn-sm" onClick={() => navigate('/dashboard')}>← Înapoi</button>
             <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
-              {editMode ? '✏️ Editează draftul' : '📋 Licitatie noua'}
+              {editMode ? '✏️ Editează draftul' : '📋 Licitație nouă'}
             </h1>
           </div>
 
           <form onSubmit={e => e.preventDefault()}>
-            <Section title="Informatii generale">
+            <Section title="Informații generale">
               <div className="form-group">
                 <label className="form-label">Titlu *</label>
-                <input className="form-input" name="title" placeholder="ex: Lalele rosii" value={form.title} onChange={handleChange} />
-                <span className="form-hint">Pune doar denumirea produsului/serviciului — cantitatea se completeaza separat.</span>
+                <input className="form-input" name="title" placeholder="ex: Lalele roșii" value={form.title} onChange={handleChange} />
+                <span className="form-hint">Pune doar denumirea produsului/serviciului — cantitatea se completează separat.</span>
               </div>
               <div className="form-group">
                 <label className="form-label">Descriere *</label>
-                <textarea className="form-input" name="description" placeholder="Descrie produsul sau serviciul dorit, specificatii tehnice, conditii..." value={form.description} onChange={handleChange} style={{ height: '100px', resize: 'vertical' }} />
+                <textarea className="form-input" name="description" placeholder="Descrie produsul sau serviciul dorit, specificații tehnice, condiții..." value={form.description} onChange={handleChange} style={{ height: '100px', resize: 'vertical' }} />
               </div>
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Categorie *</label>
                   <select className="form-select" name="category" value={form.category} onChange={handleChange}>
-                    <option value="">Selecteaza...</option>
+                    <option value="">Selectează...</option>
                     {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
@@ -275,26 +275,26 @@ export default function CreateAuction() {
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Taguri (separate prin virgula)</label>
-                <input className="form-input" name="tags" placeholder="ex: lalele, flori, decoratiuni" value={form.tags} onChange={handleChange} />
+                <label className="form-label">Taguri (separate prin virgulă)</label>
+                <input className="form-input" name="tags" placeholder="ex: lalele, flori, decorațiuni" value={form.tags} onChange={handleChange} />
               </div>
             </Section>
 
-            <Section title="Preturi">
+            <Section title="Prețuri">
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Buget de pornire (RON) *</label>
                   <input className="form-input" name="startPrice" type="number" min="1" placeholder="ex: 3000" value={form.startPrice} onChange={handleChange} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Pret tinta (RON) — optional</label>
-                  <input className="form-input" name="targetPrice" type="number" min="1" placeholder="Pretul minim acceptat" value={form.targetPrice} onChange={handleChange} />
-                  <span className="form-hint">Pretul sub care nu esti dispus sa accepti</span>
+                  <label className="form-label">Preț țintă (RON) — opțional</label>
+                  <input className="form-input" name="targetPrice" type="number" min="1" placeholder="Prețul minim acceptat" value={form.targetPrice} onChange={handleChange} />
+                  <span className="form-hint">Prețul sub care nu ești dispus să accepți</span>
                 </div>
               </div>
             </Section>
 
-            <Section title="Termen limita">
+            <Section title="Termen limită">
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Deadline *</label>
@@ -307,14 +307,14 @@ export default function CreateAuction() {
                     ? <span className="form-hint" style={{ color: 'var(--error-red)' }}>{deadlineError}</span>
                     : <span className="form-hint">
                         {form.deadline
-                          ? `Se inchide la: ${fmtDeadline(form.deadline)}`
-                          : 'Format: dd/mm/yyyy ora:minut (24h)'}
+                          ? `Se închide la: ${fmtDeadline(form.deadline)}`
+                          : 'Format: dd/mm/yyyy oră:minut (24h)'}
                       </span>}
                 </div>
                 <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '1rem' }}>
                   <label style={{ display: 'flex', alignItems: 'flex-start', fontSize: '0.8125rem', color: 'var(--text-body)', cursor: 'pointer', gap: '8px' }}>
                     <input type="checkbox" name="autoExtend" checked={form.autoExtend} onChange={handleChange} style={{ marginTop: '3px', accentColor: 'var(--bid-teal)' }} />
-                    Auto-extend (prelungire automata cu 5 min daca vine o oferta in ultimele 2 min)
+                    Auto-extend (prelungire automată cu 5 min dacă vine o ofertă în ultimele 2 min)
                   </label>
                 </div>
               </div>
@@ -341,7 +341,7 @@ export default function CreateAuction() {
               )}
             </Section>
 
-            <Section title="Locatie (optional)">
+            <Section title="Locație (opțional)">
               <MapPicker value={location} onChange={setLocation} />
             </Section>
 
@@ -375,7 +375,7 @@ export default function CreateAuction() {
                 onClick={saveDraft}
                 disabled={!!busy}
               >
-                {busy === 'draft' ? 'Se salveaza...' : '💾 Salveaza ca draft'}
+                {busy === 'draft' ? 'Se salvează...' : '💾 Salvează ca draft'}
               </button>
               <button
                 type="button"
@@ -383,7 +383,7 @@ export default function CreateAuction() {
                 onClick={publish}
                 disabled={!!busy}
               >
-                {busy === 'publish' ? 'Se publica...' : '🚀 Publica licitatia'}
+                {busy === 'publish' ? 'Se publică...' : '🚀 Publică licitația'}
               </button>
             </div>
           </form>

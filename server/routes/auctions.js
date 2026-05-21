@@ -157,7 +157,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
           entityType: 'auction',
           entityId:   req.params.id,
         });
-      return res.status(404).json({ message: 'Licitatia nu exista' });
+      return res.status(404).json({ message: 'Licitația nu există' });
     }
 
     // Protecție drafturi: vizibile doar proprietarului sau adminului.
@@ -172,7 +172,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
             entityType: 'auction',
             entityId:   req.params.id,
           });
-        return res.status(404).json({ message: 'Licitatia nu exista' });
+        return res.status(404).json({ message: 'Licitația nu există' });
       }
     }
 
@@ -195,7 +195,7 @@ router.post('/', authMiddleware, async (req, res) => {
           entityType: 'auction',
           metadata:   { role: req.user.role },
         });
-      return res.status(403).json({ message: 'Doar cumparatorii pot crea licitatii' });
+      return res.status(403).json({ message: 'Doar cumpărătorii pot crea licitații' });
     }
 
     const wantsPublish = req.body.status === 'active' || req.body.publish === true;
@@ -277,7 +277,7 @@ router.post('/', authMiddleware, async (req, res) => {
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
-    if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
+    if (!auction) return res.status(404).json({ message: 'Licitația nu există' });
 
     if (auction.buyer.toString() !== req.user.id) {
       logger.fromReq(req).security(EVENTS.AUCTION.UNAUTHORIZED,
@@ -290,7 +290,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
     }
 
     if (auction.status === 'closed' || auction.status === 'cancelled') {
-      return res.status(400).json({ message: 'Licitatia nu mai poate fi editata' });
+      return res.status(400).json({ message: 'Licitația nu mai poate fi editată' });
     }
 
     const fields  = pickAuctionFields(req.body);
@@ -332,7 +332,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
 router.post('/:id/publish', authMiddleware, async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
-    if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
+    if (!auction) return res.status(404).json({ message: 'Licitația nu există' });
 
     if (auction.buyer.toString() !== req.user.id) {
       logger.fromReq(req).security(EVENTS.AUCTION.UNAUTHORIZED,
@@ -409,7 +409,7 @@ router.post('/:id/publish', authMiddleware, async (req, res) => {
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
-    if (!auction) return res.status(404).json({ message: 'Licitatia nu exista' });
+    if (!auction) return res.status(404).json({ message: 'Licitația nu există' });
 
     if (auction.buyer.toString() !== req.user.id && req.user.role !== 'admin') {
       logger.fromReq(req).security(EVENTS.AUCTION.UNAUTHORIZED,
@@ -428,7 +428,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
           entityType: 'auction',
           entityId:   auction._id.toString(),
         });
-      return res.json({ message: 'Draftul a fost sters' });
+      return res.json({ message: 'Draftul a fost șters' });
     }
 
     auction.status = 'cancelled';
@@ -441,7 +441,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
         metadata:   { cancelledBy: req.user.role },
       });
 
-    res.json({ message: 'Licitatia a fost anulata' });
+    res.json({ message: 'Licitația a fost anulată' });
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
@@ -469,8 +469,8 @@ router.post('/:id/chat', authMiddleware, async (req, res) => {
     if (!content?.trim()) return res.status(400).json({ message: 'Mesajul e gol' });
 
     const auction = await Auction.findById(req.params.id);
-    if (!auction)                       return res.status(404).json({ message: 'Licitatia nu exista' });
-    if (auction.status !== 'active')    return res.status(400).json({ message: 'Licitatia nu e activa' });
+    if (!auction)                       return res.status(404).json({ message: 'Licitația nu există' });
+    if (auction.status !== 'active')    return res.status(400).json({ message: 'Licitația nu e activă' });
 
     const isBuyer = auction.buyer.toString() === req.user.id;
     const hasBid  = await Bid.exists({ auction: req.params.id, supplier: req.user.id });
@@ -482,7 +482,7 @@ router.post('/:id/chat', authMiddleware, async (req, res) => {
           entityId:   req.params.id,
         });
       return res.status(403).json({
-        message: 'Doar cumparatorul si furnizorii care au ofertat pot scrie aici',
+        message: 'Doar cumpărătorul și furnizorii care au ofertat pot scrie aici',
       });
     }
 

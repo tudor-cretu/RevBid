@@ -51,7 +51,7 @@ router.post('/conversation', authMiddleware, async (req, res) => {
 router.get('/:conversationId', authMiddleware, async (req, res) => {
   try {
     const conversation = await Conversation.findById(req.params.conversationId);
-    if (!conversation) return res.status(404).json({ message: 'Conversatie negasita' });
+    if (!conversation) return res.status(404).json({ message: 'Conversație negăsită' });
 
     if (!conversation.participants.includes(req.user.id)) {
       return res.status(403).json({ message: 'Acces interzis' });
@@ -79,7 +79,7 @@ router.post('/:conversationId', authMiddleware, async (req, res) => {
     if (!content?.trim()) return res.status(400).json({ message: 'Mesajul e gol' });
 
     const conversation = await Conversation.findById(req.params.conversationId);
-    if (!conversation) return res.status(404).json({ message: 'Conversatie negasita' });
+    if (!conversation) return res.status(404).json({ message: 'Conversație negăsită' });
 
     if (!conversation.participants.map(p => p.toString()).includes(req.user.id)) {
       return res.status(403).json({ message: 'Acces interzis' });
@@ -130,13 +130,13 @@ router.post('/:conversationId', authMiddleware, async (req, res) => {
 router.post('/:conversationId/image', authMiddleware, upload.single('image'), async (req, res) => {
   try {
     const conversation = await Conversation.findById(req.params.conversationId);
-    if (!conversation) return res.status(404).json({ message: 'Conversatie negasita' });
+    if (!conversation) return res.status(404).json({ message: 'Conversație negăsită' });
 
     if (!conversation.participants.map(p => p.toString()).includes(req.user.id)) {
       return res.status(403).json({ message: 'Acces interzis' });
     }
 
-    if (!req.file) return res.status(400).json({ message: 'Nicio imagine trimisa' });
+    if (!req.file) return res.status(400).json({ message: 'Nicio imagine trimisă' });
 
     const message = await Message.create({
       conversation: req.params.conversationId,
@@ -181,7 +181,7 @@ router.post('/:conversationId/image', authMiddleware, upload.single('image'), as
 router.delete('/:conversationId', authMiddleware, async (req, res) => {
   try {
     const conversation = await Conversation.findById(req.params.conversationId);
-    if (!conversation) return res.status(404).json({ message: 'Conversatie negasita' });
+    if (!conversation) return res.status(404).json({ message: 'Conversație negăsită' });
 
     if (!conversation.participants.map(p => p.toString()).includes(req.user.id)) {
       return res.status(403).json({ message: 'Acces interzis' });
@@ -190,7 +190,7 @@ router.delete('/:conversationId', authMiddleware, async (req, res) => {
     await Message.deleteMany({ conversation: req.params.conversationId });
     await Conversation.findByIdAndDelete(req.params.conversationId);
 
-    res.json({ message: 'Conversatie stearsa' });
+    res.json({ message: 'Conversație ștearsă' });
   } catch (err) {
     res.status(500).json({ message: 'Eroare server', error: err.message });
   }

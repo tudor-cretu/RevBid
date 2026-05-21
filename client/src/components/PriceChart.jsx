@@ -20,8 +20,8 @@ export default function PriceChart({ auctionId, startPrice, currentPrice }) {
       <div className="card">
         <div className="empty-state" style={{ padding: '2rem' }}>
           <div className="empty-state-icon">📊</div>
-          <p className="empty-state-title">Nicio oferta inca</p>
-          <p className="empty-state-text">Graficul apare dupa prima oferta depusa.</p>
+          <p className="empty-state-title">Nicio ofertă încă</p>
+          <p className="empty-state-text">Graficul apare după prima ofertă depusă.</p>
         </div>
       </div>
     );
@@ -35,7 +35,7 @@ export default function PriceChart({ auctionId, startPrice, currentPrice }) {
   const data = {
     labels,
     datasets: [{
-      label: 'Pret (RON)',
+      label: 'Preț (RON)',
       data: prices,
       borderColor: '#00A99D',
       backgroundColor: 'rgba(0, 169, 157, 0.08)',

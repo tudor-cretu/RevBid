@@ -77,7 +77,7 @@ export default function Messages() {
   const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
   const getOtherParticipant = (conv) => conv.participants?.find(p => p._id !== user.id);
   const handleDeleteConversation = async (convId) => {
-    if (!window.confirm('Stergi aceasta conversatie? Toate mesajele vor fi pierdute.')) return;
+    if (!window.confirm('Ștergi această conversație? Toate mesajele vor fi pierdute.')) return;
     await fetch(`${API_URL}/api/messages/${convId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
     setConversations(prev => prev.filter(c => c._id !== convId)); setActiveConv(null); setMessages([]);
   };
@@ -88,8 +88,8 @@ export default function Messages() {
         {/* Sidebar */}
         <div className="msg-sidebar">
           <div className="msg-sidebar-header"><h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'var(--text-inverse)' }}>💬 Mesaje</h2></div>
-          {loading ? <p className="loading-text">Se incarca...</p> : conversations.length === 0 ? (
-            <div className="empty-state" style={{ padding: '2rem' }}><div className="empty-state-icon">💬</div><p className="empty-state-text">Nicio conversatie inca.</p></div>
+          {loading ? <p className="loading-text">Se încarcă...</p> : conversations.length === 0 ? (
+            <div className="empty-state" style={{ padding: '2rem' }}><div className="empty-state-icon">💬</div><p className="empty-state-text">Nicio conversație încă.</p></div>
           ) : conversations.map(conv => {
             const other = getOtherParticipant(conv); const isAct = activeConv?._id === conv._id;
             return (
@@ -100,7 +100,7 @@ export default function Messages() {
                 <div className="msg-conv-info">
                   <p className="msg-conv-name">{other?.firstName} {other?.lastName}</p>
                   {conv.auction && <p className="msg-conv-auction">re: {conv.auction.title}</p>}
-                  <p className="msg-conv-last">{conv.lastMessage || 'Conversatie noua'}</p>
+                  <p className="msg-conv-last">{conv.lastMessage || 'Conversație nouă'}</p>
                 </div>
               </div>
             );
@@ -110,7 +110,7 @@ export default function Messages() {
         {/* Chat */}
         <div className="msg-chat">
           {!activeConv ? (
-            <div className="empty-state" style={{ flex: 1, justifyContent: 'center' }}><div className="empty-state-icon">💬</div><p className="empty-state-title">Selecteaza o conversatie</p></div>
+            <div className="empty-state" style={{ flex: 1, justifyContent: 'center' }}><div className="empty-state-icon">💬</div><p className="empty-state-title">Selectează o conversație</p></div>
           ) : (<>
             <div className="msg-chat-header">
               {(() => { const other = getOtherParticipant(activeConv); return (<>
@@ -123,7 +123,7 @@ export default function Messages() {
                     {activeConv.auction && <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0, cursor: 'pointer' }} onClick={() => navigate(`/auction/${activeConv.auction._id}`)}>re: {activeConv.auction.title} →</p>}
                   </div>
                 </div>
-                <button className="btn btn-outline btn-sm" style={{ color: 'var(--error-red)', borderColor: 'var(--error-border)' }} onClick={() => handleDeleteConversation(activeConv._id)}>🗑️ Sterge</button>
+                <button className="btn btn-outline btn-sm" style={{ color: 'var(--error-red)', borderColor: 'var(--error-border)' }} onClick={() => handleDeleteConversation(activeConv._id)}>🗑️ Șterge</button>
               </>); })()}
             </div>
 
@@ -145,7 +145,7 @@ export default function Messages() {
             {imgPreview && (
               <div style={{ padding: '8px 1.25rem', borderTop: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--ice-blue)' }}>
                 <img src={imgPreview} alt="preview" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }} />
-                <button className="btn btn-outline btn-sm" onClick={cancelImage}>Anuleaza</button>
+                <button className="btn btn-outline btn-sm" onClick={cancelImage}>Anulează</button>
                 <button className="btn btn-primary btn-sm" onClick={sendImage} disabled={uploading}>{uploading ? 'Se trimite...' : '📷 Trimite'}</button>
               </div>
             )}
@@ -153,7 +153,7 @@ export default function Messages() {
             <div className="msg-input-row">
               <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />
               <button className="btn-icon" onClick={() => fileRef.current.click()} title="Trimite imagine">📷</button>
-              <textarea className="form-input" placeholder="Scrie un mesaj... (Enter pentru trimite)" value={newMsg} onChange={e => setNewMsg(e.target.value)} onKeyDown={handleKeyDown} rows={1} style={{ flex: 1, resize: 'none' }} />
+              <textarea className="form-input" placeholder="Scrie un mesaj... (Enter pentru a trimite)" value={newMsg} onChange={e => setNewMsg(e.target.value)} onKeyDown={handleKeyDown} rows={1} style={{ flex: 1, resize: 'none' }} />
               <button className="btn btn-primary btn-sm" onClick={sendMessage}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>

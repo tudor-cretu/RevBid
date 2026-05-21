@@ -35,7 +35,7 @@ export default function VerifyEmail() {
         <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'var(--soft-aqua)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', fontSize: '28px' }}>
           📧
         </div>
-        <h1 style={{ fontSize: '1.375rem', marginBottom: '8px' }}>Verifica emailul</h1>
+        <h1 style={{ fontSize: '1.375rem', marginBottom: '8px' }}>Verifică emailul</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', marginBottom: '1.75rem', lineHeight: '1.6' }}>
           Am trimis un cod de 6 cifre la<br /><strong style={{ color: 'var(--text-heading)' }}>{email}</strong>
         </p>
@@ -50,7 +50,7 @@ export default function VerifyEmail() {
           />
           {error && <div className="alert alert-error" style={{ width: '100%' }}>{error}</div>}
           <button className="btn btn-primary btn-block btn-lg" type="submit" disabled={loading || code.length !== 6}>
-            {loading ? 'Se verifica...' : 'Verifica codul'}
+            {loading ? 'Se verifică...' : 'Verifică codul'}
           </button>
         </form>
 

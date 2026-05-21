@@ -109,7 +109,7 @@ router.post('/register', async (req, res) => {
         'Tentativă de înregistrare cu email existent', {
           metadata: { email: maskEmail(email) },
         });
-      return res.status(400).json({ message: 'Email deja inregistrat' });
+      return res.status(400).json({ message: 'Email deja înregistrat' });
     }
 
     const passwordHash     = await bcrypt.hash(password, 10);
@@ -152,7 +152,7 @@ router.post('/register', async (req, res) => {
       });
 
     res.status(201).json({
-      message:     'Cont creat. Verifica emailul pentru cod.',
+      message:     'Cont creat. Verifică emailul pentru cod.',
       needsVerify: true,
       email,
     });
@@ -169,7 +169,7 @@ router.post('/verify', async (req, res) => {
     const { email, code } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: 'User negasit' });
+    if (!user) return res.status(404).json({ message: 'Utilizator negăsit' });
     if (user.isVerified) return res.status(400).json({ message: 'Cont deja verificat' });
 
     if (user.verifyCode !== code) {
@@ -189,7 +189,7 @@ router.post('/verify', async (req, res) => {
           entityId:   user._id.toString(),
           metadata:   { email: maskEmail(email) },
         });
-      return res.status(400).json({ message: 'Codul a expirat. Solicita unul nou.' });
+      return res.status(400).json({ message: 'Codul a expirat. Solicită unul nou.' });
     }
 
     user.isVerified       = true;
@@ -219,7 +219,7 @@ router.post('/resend-code', async (req, res) => {
     const { email } = req.body;
     const user = await User.findOne({ email });
 
-    if (!user) return res.status(404).json({ message: 'User negasit' });
+    if (!user) return res.status(404).json({ message: 'Utilizator negăsit' });
     if (user.isVerified) return res.status(400).json({ message: 'Cont deja verificat' });
 
     const verifyCode       = Math.floor(100000 + Math.random() * 900000).toString();
@@ -282,7 +282,7 @@ router.post('/login', async (req, res) => {
         'Login eșuat — email inexistent', {
           metadata: { email: maskEmail(email), attempt: rateCheck.count },
         });
-      return res.status(400).json({ message: 'Email sau parola incorecta' });
+      return res.status(400).json({ message: 'Email sau parolă incorectă' });
     }
 
     if (user.isBanned) {
@@ -313,7 +313,7 @@ router.post('/login', async (req, res) => {
           entityId:   user._id.toString(),
           metadata:   { email: maskEmail(email), attempt: rateCheck.count },
         });
-      return res.status(400).json({ message: 'Email sau parola incorecta' });
+      return res.status(400).json({ message: 'Email sau parolă incorectă' });
     }
 
     /* Login reușit — resetăm rate limiter */
@@ -587,7 +587,7 @@ router.put('/change-password', authMiddleware, async (req, res) => {
         'Parolă curentă incorectă la schimbare parolă', {
           entityType: 'user', entityId: req.user.id,
         });
-      return res.status(400).json({ message: 'Parola curenta incorecta' });
+      return res.status(400).json({ message: 'Parola curentă incorectă' });
     }
 
     user.passwordHash = await bcrypt.hash(newPassword, 10);
@@ -598,7 +598,7 @@ router.put('/change-password', authMiddleware, async (req, res) => {
         entityType: 'user', entityId: req.user.id,
       });
 
-    res.json({ message: 'Parola schimbata cu succes' });
+    res.json({ message: 'Parola schimbată cu succes' });
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
@@ -640,7 +640,7 @@ router.put('/avatar', authMiddleware, async (req, res) => {
         return res.status(400).json({ message: 'Eroare upload' });
       }
       if (!req.file) {
-        return res.status(400).json({ message: 'Nicio imagine trimisa' });
+        return res.status(400).json({ message: 'Nicio imagine trimisă' });
       }
 
       const user = await User.findById(req.user.id);
@@ -674,7 +674,7 @@ router.get('/profile/:id', async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
       .select('firstName lastName companyName role avatar city rating reviewCount createdAt');
-    if (!user) return res.status(404).json({ message: 'Userul nu exista' });
+    if (!user) return res.status(404).json({ message: 'Utilizatorul nu există' });
     res.json(user);
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);

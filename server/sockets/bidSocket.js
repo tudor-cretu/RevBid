@@ -12,7 +12,7 @@ module.exports = (io) => {
   // ── Socket auth middleware ───────────────────────────────────
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
-    if (!token) return next(new Error('Token lipsa'));
+    if (!token) return next(new Error('Token lipsă'));
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       socket.user   = decoded;
@@ -71,11 +71,11 @@ module.exports = (io) => {
 
         // ── Validari ──
         const auction = await Auction.findById(auctionId);
-        if (!auction)                              return callback({ error: 'Licitatia nu exista' });
-        if (auction.status !== 'active')           return callback({ error: 'Licitatia nu e activa' });
+        if (!auction)                              return callback({ error: 'Licitația nu există' });
+        if (auction.status !== 'active')           return callback({ error: 'Licitația nu e activă' });
         if (socket.user.role !== 'supplier')       return callback({ error: 'Doar furnizorii pot oferta' });
-        if (auction.buyer.toString() === socket.user.id) return callback({ error: 'Nu poti licita la propria licitatie' });
-        if (amount >= auction.currentPrice)        return callback({ error: `Oferta trebuie sa fie sub ${auction.currentPrice} RON` });
+        if (auction.buyer.toString() === socket.user.id) return callback({ error: 'Nu poți licita la propria licitație' });
+        if (amount >= auction.currentPrice)        return callback({ error: `Oferta trebuie să fie sub ${auction.currentPrice} RON` });
 
         // ── Auto-extend ──
         const now      = new Date();
