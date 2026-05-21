@@ -166,6 +166,35 @@ const auctionEndedSubscriberTemplate = ({ firstName, auctionTitle, auctionId }) 
   }),
 });
 
+/* ── Post-licitație: furnizorul a confirmat livrarea (către buyer) ── */
+const deliveryConfirmedTemplate = ({ firstName, auctionTitle, auctionId }) => ({
+  subject: `RevBid — Livrare confirmată pentru "${auctionTitle}"`,
+  html: layout({
+    heading: 'Furnizorul a confirmat livrarea',
+    headingColor: '#17B26A', accent: '#17B26A', ctaColor: '#17B26A',
+    intro: `Salut <strong>${firstName}</strong>, furnizorul a confirmat livrarea pentru licitația <strong>"${auctionTitle}"</strong>.`,
+    bodyHtml: `<p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
+      Verifică produsele sau serviciile primite, apoi confirmă primirea pe pagina licitației.
+      După confirmarea ambelor părți veți putea lăsa recenzii reciproce.
+    </p>`,
+    ctaText: 'Confirmă primirea', ctaUrl: `${CLIENT()}/auction/${auctionId}`,
+  }),
+});
+
+/* ── Post-licitație: buyerul a confirmat primirea (către supplier) ── */
+const receiptConfirmedTemplate = ({ firstName, auctionTitle, auctionId }) => ({
+  subject: `RevBid — Primire confirmată pentru "${auctionTitle}"`,
+  html: layout({
+    heading: 'Cumpărătorul a confirmat primirea',
+    headingColor: '#17B26A', accent: '#17B26A', ctaColor: '#17B26A',
+    intro: `Salut <strong>${firstName}</strong>, cumpărătorul a confirmat primirea produselor/serviciilor pentru licitația <strong>"${auctionTitle}"</strong>.`,
+    bodyHtml: `<p style="font-size:13px;color:#6B7C86;line-height:1.6;margin:0 0 16px">
+      Colaborarea este completă. Poți lăsa acum o recenzie cumpărătorului pe pagina licitației.
+    </p>`,
+    ctaText: 'Vezi licitația', ctaUrl: `${CLIENT()}/auction/${auctionId}`,
+  }),
+});
+
 /* ── Resetare parolă ───────────────────────────────────────────── */
 const resetPasswordTemplate = ({ firstName, resetUrl }) => ({
   subject: 'RevBid — Resetează-ți parola',
@@ -197,5 +226,7 @@ module.exports = {
   auctionEndedBuyerTemplate,
   auctionLostTemplate,
   auctionEndedSubscriberTemplate,
+  deliveryConfirmedTemplate,
+  receiptConfirmedTemplate,
   resetPasswordTemplate,
 };

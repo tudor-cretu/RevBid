@@ -8,6 +8,7 @@ import AuctionChatBox                  from '../components/AuctionChatBox';
 import MapView                         from '../components/MapView';
 import AuctionEndModal                 from '../components/AuctionEndModal';
 import AuctionOutcome                  from '../components/AuctionOutcome';
+import ReviewModal                     from '../components/ReviewModal';
 import { fireConfetti }                from '../utils/confetti';
 
 const fmtNum = n => (n === null || n === undefined ? '—' : Number(n).toLocaleString('ro-RO'));
@@ -56,6 +57,13 @@ export default function AuctionDetail() {
   // Invoice / Rezumat tranzacție
   const [invoiceMeta,        setInvoiceMeta]        = useState(null);
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+
+  // Workflow post-licitație (confirmări livrare/primire + review)
+  const [completion,      setCompletion]      = useState(null);
+  const [confirming,      setConfirming]      = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError,     setReviewError]     = useState('');
   // Ref cu date "live" — handler-ul socket citește mereu valorile curente
   const liveRef = useRef({ userId: null, bids: [], buyerId: null });
 
@@ -76,7 +84,7 @@ export default function AuctionDetail() {
   /* Când licitația este închisă, încărcăm metadata documentului de tranzacție.
      Endpoint-ul răspunde doar pentru buyer / câștigător / admin. */
   useEffect(() => {
-    if (auction?.status === 'closed') fetchInvoiceMeta();
+    if (auction?.status === 'closed') { fetchInvoiceMeta(); fetchCompletion(); }
   }, [auction?.status]);
 
   const fetchInvoiceMeta = async () => {
@@ -86,6 +94,68 @@ export default function AuctionDetail() {
       });
       if (res.ok) setInvoiceMeta(await res.json());
     } catch {}
+  };
+
+  /* Starea workflow-ului post-licitație (confirmări + review-uri). */
+  const fetchCompletion = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/auctions/${id}/completion`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setCompletion(await res.json());
+    } catch {}
+  };
+
+  const confirmDelivery = async () => {
+    setConfirming(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auctions/${id}/confirm-delivery`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { setRequestToast('error:' + (data.message || 'Eroare la confirmare.')); return; }
+      await fetchCompletion();
+      setRequestToast(data.readyForReview
+        ? 'ok:Colaborarea este pregătită pentru review.'
+        : 'ok:Livrarea a fost confirmată.');
+    } catch {
+      setRequestToast('error:Eroare de conexiune.');
+    } finally { setConfirming(false); }
+  };
+
+  const confirmReceipt = async () => {
+    setConfirming(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auctions/${id}/confirm-receipt`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { setRequestToast('error:' + (data.message || 'Eroare la confirmare.')); return; }
+      await fetchCompletion();
+      setRequestToast(data.readyForReview
+        ? 'ok:Colaborarea este pregătită pentru review.'
+        : 'ok:Primirea a fost confirmată.');
+    } catch {
+      setRequestToast('error:Eroare de conexiune.');
+    } finally { setConfirming(false); }
+  };
+
+  const submitReview = async (rating, comment) => {
+    setSubmittingReview(true); setReviewError('');
+    try {
+      const res = await fetch(`${API_URL}/api/auctions/${id}/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ rating, comment }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setReviewError(data.message || 'Nu am putut trimite review-ul.'); return; }
+      setReviewModalOpen(false);
+      await fetchCompletion();
+      setRequestToast('ok:Review-ul a fost trimis. Mulțumim!');
+    } catch {
+      setReviewError('Eroare de conexiune. Încearcă din nou.');
+    } finally { setSubmittingReview(false); }
   };
 
   const downloadInvoice = async () => {
@@ -118,6 +188,13 @@ export default function AuctionDetail() {
       ? `Salut! Felicitări pentru oferta câștigătoare la licitația "${auction.title}". Aș vrea să discutăm pașii următori.`
       : `Salut! Am câștigat licitația "${auction.title}". Sunt disponibil să discutăm detaliile pentru livrare/execuție.`;
     navigate(`/messages?to=${cp._id}&auction=${id}&prefill=${encodeURIComponent(prefill)}`);
+  };
+
+  const messageBuyer = () => {
+    const buyer = auction?.buyer;
+    if (!buyer?._id) { navigate('/messages'); return; }
+    const prefill = `Bună ziua! Am văzut licitația dumneavoastră "${auction.title}" și aș dori să pun câteva întrebări înainte de a depune o ofertă.`;
+    navigate(`/messages?to=${buyer._id}&auction=${id}&prefill=${encodeURIComponent(prefill)}`);
   };
 
   useEffect(() => {
@@ -423,6 +500,20 @@ export default function AuctionDetail() {
           />
         )}
 
+        {/* Modal review post-licitație */}
+        {reviewModalOpen && (
+          <ReviewModal
+            revieweeRole={outcomeRole === 'buyer' ? 'supplier' : 'buyer'}
+            revieweeName={invoiceMeta?.counterparty
+              ? `${invoiceMeta.counterparty.firstName || ''} ${invoiceMeta.counterparty.lastName || ''}`.trim()
+              : (outcomeRole === 'buyer' ? 'Furnizorul câștigător' : 'Cumpărătorul')}
+            onSubmit={submitReview}
+            onClose={() => setReviewModalOpen(false)}
+            submitting={submittingReview}
+            error={reviewError}
+          />
+        )}
+
         <div className="ad-layout">
           {/* ═══ LEFT ═══ */}
           <div className="ad-left">
@@ -633,6 +724,60 @@ export default function AuctionDetail() {
               </div>
             </div>
 
+            {/* Contact cumpărător — vizibil furnizorilor în timpul licitației */}
+            {isActive && isSupplier && !isBuyer && auction?.buyer && (
+              <div className="card">
+                <div className="ad-card-head">
+                  <span className="ad-card-icon">🤝</span>
+                  <h3 className="card-title">Contact cumpărător</h3>
+                </div>
+                <div className="ao-contact">
+                  {auction.buyer.avatar ? (
+                    <img src={auction.buyer.avatar} alt="" className="ao-contact-avatar" />
+                  ) : (
+                    <div className="ao-contact-avatar-fb">
+                      {auction.buyer.firstName?.[0]}{auction.buyer.lastName?.[0]}
+                    </div>
+                  )}
+                  <div className="ao-contact-info">
+                    <p className="ao-contact-name">
+                      {auction.buyer.firstName} {auction.buyer.lastName}
+                    </p>
+                    <p className="ao-contact-meta">
+                      Cumpărător
+                      {auction.buyer.companyName ? ` · ${auction.buyer.companyName}` : ''}
+                      {auction.buyer.rating > 0 ? ` · ★ ${auction.buyer.rating.toFixed(1)}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="ao-contact-rows">
+                  {auction.buyer.email && (
+                    <div className="ao-contact-row">
+                      <span>✉️</span>
+                      <a href={`mailto:${auction.buyer.email}`}>{auction.buyer.email}</a>
+                    </div>
+                  )}
+                  {auction.buyer.phone && (
+                    <div className="ao-contact-row">
+                      <span>📞</span>
+                      <a href={`tel:${auction.buyer.phone}`}>{auction.buyer.phone}</a>
+                    </div>
+                  )}
+                </div>
+                <div className="ao-contact-actions">
+                  <button className="btn btn-primary btn-block btn-sm" onClick={messageBuyer}>
+                    💬 Trimite mesaj
+                  </button>
+                  <button
+                    className="btn btn-outline btn-block btn-sm"
+                    onClick={() => navigate(`/profile/${auction.buyer._id}`)}
+                  >
+                    Vezi profilul
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Depune ofertă — supplier */}
             {isActive && isSupplier && !isBuyer && (
               <div className="card">
@@ -657,6 +802,12 @@ export default function AuctionDetail() {
                 auction={auction}
                 invoiceMeta={invoiceMeta}
                 counterparty={invoiceMeta?.counterparty}
+                companyComplete={invoiceMeta?.myCompanyComplete}
+                completion={completion}
+                confirming={confirming}
+                onConfirmDelivery={confirmDelivery}
+                onConfirmReceipt={confirmReceipt}
+                onOpenReview={() => { setReviewError(''); setReviewModalOpen(true); }}
                 onDownloadInvoice={downloadInvoice}
                 downloadingInvoice={downloadingInvoice}
                 onMessage={() => messageCounterparty(outcomeRole)}
@@ -946,6 +1097,23 @@ const adCSS = `
 .ad-insight.tone-warn  .ad-insight-dot { background: var(--warning-amber); }
 .ad-insight.tone-bad   { background: #FEF2F2; border-color: #FECACA; }
 .ad-insight.tone-bad   .ad-insight-dot { background: var(--error-red); }
+
+/* ── Contact buyer (active auction) ── */
+.ao-contact { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
+.ao-contact-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.ao-contact-avatar-fb {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  background: var(--bid-teal); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.9375rem; font-weight: 700;
+}
+.ao-contact-info { min-width: 0; }
+.ao-contact-name { font-size: 0.9375rem; font-weight: 700; color: var(--text-heading); margin: 0; }
+.ao-contact-meta { font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 0; }
+.ao-contact-rows { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.ao-contact-row { display: flex; align-items: center; gap: 7px; font-size: 0.8125rem; }
+.ao-contact-row a { color: var(--action-blue); font-weight: 500; word-break: break-all; }
+.ao-contact-actions { display: flex; flex-direction: column; gap: 7px; }
 
 /* ── Acțiuni buyer ── */
 .ad-req-status { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }

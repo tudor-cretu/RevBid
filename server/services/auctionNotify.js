@@ -22,6 +22,7 @@ const Counter      = require('../models/Counter');
 const sendMail     = require('../config/mailer');
 const notifyUser   = require('../utils/notify');
 const { buildInvoicePdf } = require('../utils/invoiceDoc');
+const { companySnapshot } = require('../utils/company');
 const logger       = require('../utils/logger');
 const EVENTS       = require('../utils/events');
 const {
@@ -77,6 +78,10 @@ async function getOrCreateInvoice(auction, winningBid) {
     deadline:     auction.deadline,
     finalizedAt:  auction.endedNotifiedAt || new Date(),
     status:       'generated',
+
+    // Snapshot date companie — stabile chiar dacă profilul se schimbă ulterior
+    buyerCompany:    companySnapshot(buyer?.company),
+    supplierCompany: companySnapshot(supplier?.company),
   });
 
   logger.audit(EVENTS.INVOICE.GENERATED,
@@ -102,7 +107,7 @@ async function finalizeAuctionNotifications(io, auctionId) {
       { _id: auctionId, endNotificationsSent: { $ne: true } },
       { $set: { endNotificationsSent: true, endedNotifiedAt: new Date() } },
       { new: true }
-    ).populate('buyer', 'firstName lastName email companyName');
+    ).populate('buyer', 'firstName lastName email companyName company');
 
     if (!auction) {
       logger.debug(EVENTS.NOTIFY.AUCTION_END_SKIP,
@@ -116,7 +121,7 @@ async function finalizeAuctionNotifications(io, auctionId) {
        Folosim flag-ul `isWinning` menținut la fiecare bid; fallback
        pe minimul efectiv dacă flag-ul lipsește.                   */
     const allBids = await Bid.find({ auction: auctionId })
-      .populate('supplier', 'firstName lastName email companyName')
+      .populate('supplier', 'firstName lastName email companyName company')
       .sort({ amount: 1 });
 
     let winningBid = allBids.find(b => b.isWinning) || null;
@@ -144,7 +149,7 @@ async function finalizeAuctionNotifications(io, auctionId) {
     if (winningBid?.supplier && winnerId && auction.status === 'closed') {
       try {
         invoice = await getOrCreateInvoice(auction, winningBid);
-        const pdf = buildInvoicePdf(invoice);
+        const pdf = await buildInvoicePdf(invoice);
         pdfAttachment = [{
           filename:    `RevBid-${invoice.invoiceNumber}.pdf`,
           content:     pdf,

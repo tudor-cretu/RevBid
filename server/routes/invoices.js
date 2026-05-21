@@ -4,6 +4,7 @@ const router         = require('express').Router();
 const Invoice        = require('../models/Invoice');
 const authMiddleware = require('../middleware/auth');
 const { buildInvoicePdf } = require('../utils/invoiceDoc');
+const { companyCompleteness } = require('../utils/company');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
 
@@ -14,8 +15,8 @@ const EVENTS         = require('../utils/events');
  */
 async function loadAuthorized(req, res) {
   const invoice = await Invoice.findOne({ auction: req.params.auctionId })
-    .populate('buyer',    'firstName lastName companyName email phone avatar rating role')
-    .populate('supplier', 'firstName lastName companyName email phone avatar rating role');
+    .populate('buyer',    'firstName lastName companyName email phone avatar rating role company')
+    .populate('supplier', 'firstName lastName companyName email phone avatar rating role company');
 
   if (!invoice) {
     res.status(404).json({ message: 'Nu există un document pentru această licitație' });
@@ -68,6 +69,15 @@ router.get('/auction/:auctionId', authMiddleware, async (req, res) => {
     if (role === 'buyer')  counterparty = party(invoice.supplier);
     if (role === 'winner') counterparty = party(invoice.buyer);
 
+    /* Starea propriilor date de companie — pentru CTA-ul din UI.
+       Nu expunem datele fiscale ale contrapărții în acest endpoint. */
+    let myCompany = null;
+    if (role === 'buyer')  myCompany = invoice.buyer?.company;
+    if (role === 'winner') myCompany = invoice.supplier?.company;
+    const myCompanyComplete = role === 'admin'
+      ? true
+      : companyCompleteness(myCompany).complete;
+
     res.json({
       invoiceNumber: invoice.invoiceNumber,
       amount:        invoice.amount,
@@ -79,6 +89,7 @@ router.get('/auction/:auctionId', authMiddleware, async (req, res) => {
       generatedAt:   invoice.generatedAt,
       role,
       counterparty,
+      myCompanyComplete,
     });
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
@@ -93,7 +104,7 @@ router.get('/auction/:auctionId/download', authMiddleware, async (req, res) => {
     if (!r) return;
     const { invoice, role } = r;
 
-    const pdf = buildInvoicePdf(invoice);
+    const pdf = await buildInvoicePdf(invoice);
 
     logger.fromReq(req).audit(EVENTS.INVOICE.DOWNLOADED,
       `Document de tranzacție descărcat: ${invoice.invoiceNumber}`, {

@@ -55,7 +55,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id)
-      .populate('buyer', 'firstName lastName companyName rating');
+      .populate('buyer', 'firstName lastName companyName email phone avatar rating');
 
     if (!auction) {
       logger.fromReq(req).warn(EVENTS.AUCTION.NOT_FOUND,

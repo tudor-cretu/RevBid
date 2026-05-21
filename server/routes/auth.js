@@ -12,6 +12,9 @@ const passport       = require('../config/passport');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
 const { maskEmail }  = require('../utils/sanitize');
+const {
+  normalizeCompanyInput, validateCompany, hasAnyCompanyData, maskTaxId,
+} = require('../utils/company');
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 const generateToken = (user) => jwt.sign(
@@ -29,6 +32,7 @@ const userPayload = (user) => ({
   isVerified:  user.isVerified,
   avatar:      user.avatar,
   companyName: user.companyName,
+  company:     user.company || {},
 });
 
 /* ── Rate limiting simplu pentru login (în memorie) ─────────── */
@@ -516,6 +520,50 @@ router.put('/settings', authMiddleware, async (req, res) => {
   } catch (err) {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
+  }
+});
+
+/* ── COMPANY — date companie / date fiscale ──────────────────────
+   Utilizatorul poate adăuga/edita DOAR propriile date de companie.   */
+router.put('/company', authMiddleware, async (req, res) => {
+  try {
+    const normalized      = normalizeCompanyInput(req.body);
+    const { valid, errors } = validateCompany(normalized);
+
+    if (!valid) {
+      logger.fromReq(req).warn(EVENTS.COMPANY.UPDATE_FAILED,
+        'Validare date companie eșuată', {
+          entityType: 'user', entityId: req.user.id,
+          metadata: { invalidFields: Object.keys(errors) },
+        });
+      return res.status(400).json({ message: 'Date companie invalide', errors });
+    }
+
+    const user = await User.findById(req.user.id)
+      .select('-passwordHash -verifyCode -verifyCodeExpiry');
+    if (!user) return res.status(404).json({ message: 'Utilizator inexistent' });
+
+    /* Actualizăm câmpurile pe rând — păstrăm createdAt-ul sub-documentului. */
+    if (!user.company) user.company = {};
+    user.company.legalName           = normalized.legalName;
+    user.company.taxId               = normalized.taxId;
+    user.company.tradeRegisterNumber = normalized.tradeRegisterNumber;
+    user.company.address             = normalized.address;
+    await user.save();
+
+    logger.fromReq(req).audit(EVENTS.COMPANY.UPDATED,
+      'Date companie actualizate', {
+        entityType: 'user', entityId: req.user.id,
+        metadata: {
+          hasData: hasAnyCompanyData(normalized),
+          taxId:   normalized.taxId ? maskTaxId(normalized.taxId) : '[empty]',
+        },
+      });
+
+    res.json(user);
+  } catch (err) {
+    logger.logReqError(req, EVENTS.COMPANY.UPDATE_FAILED, err);
+    res.status(500).json({ message: 'Nu am putut salva datele companiei.' });
   }
 });
 

@@ -36,6 +36,13 @@ const EVENTS = {
     ACCOUNT_DELETED:       'AUTH_ACCOUNT_DELETED',
   },
 
+  /* ── Date companie / date fiscale ── */
+  COMPANY: {
+    UPDATED:        'COMPANY_UPDATED',
+    UPDATE_FAILED:  'COMPANY_UPDATE_FAILED',
+    ACCESS_DENIED:  'COMPANY_ACCESS_DENIED',
+  },
+
   /* ── Licitații ── */
   AUCTION: {
     CREATED:            'AUCTION_CREATED',
@@ -69,6 +76,22 @@ const EVENTS = {
     ACCESS_DENIED:      'INVOICE_ACCESS_DENIED',
     REGENERATED:        'INVOICE_REGENERATED',
     ADMIN_LIST:         'INVOICE_ADMIN_LIST',
+  },
+
+  /* ── Workflow post-licitație (confirmări livrare/primire) ── */
+  COMPLETION: {
+    DELIVERY_CONFIRMED: 'COMPLETION_DELIVERY_CONFIRMED',
+    RECEIPT_CONFIRMED:  'COMPLETION_RECEIPT_CONFIRMED',
+    READY_FOR_REVIEW:   'COMPLETION_READY_FOR_REVIEW',
+    ACCESS_DENIED:      'COMPLETION_ACCESS_DENIED',
+  },
+
+  /* ── Review-uri ── */
+  REVIEW: {
+    CREATED:           'REVIEW_CREATED',
+    DUPLICATE_BLOCKED: 'REVIEW_DUPLICATE_BLOCKED',
+    INVALID:           'REVIEW_INVALID',
+    ACCESS_DENIED:     'REVIEW_ACCESS_DENIED',
   },
 
   /* ── Oferte ── */
