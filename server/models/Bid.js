@@ -8,4 +8,14 @@ const bidSchema = new mongoose.Schema({
   isWinning: { type: Boolean, default: false },
 }, { timestamps: true });
 
+/* ── Indexuri ────────────────────────────────────────────────────
+   - (auction, amount asc) → list / lowestBid query
+   - (auction, isWinning)  → găsirea câștigătorului curent
+   - (supplier, createdAt) → istoric oferte furnizor
+   - (supplier, isWinning) → ofertele câștigate ale unui furnizor      */
+bidSchema.index({ auction: 1, amount: 1 });
+bidSchema.index({ auction: 1, isWinning: 1 });
+bidSchema.index({ supplier: 1, createdAt: -1 });
+bidSchema.index({ supplier: 1, isWinning: 1 });
+
 module.exports = mongoose.model('Bid', bidSchema);

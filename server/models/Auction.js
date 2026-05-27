@@ -36,4 +36,14 @@ auctionSchema.pre('save', function () {
   if (this.isNew) this.currentPrice = this.startPrice;
 });
 
+/* ── Indexuri ────────────────────────────────────────────────────
+   - (status, deadline) → job-ul de închidere automată
+   - (buyer, status)    → "licitațiile mele" filtrate după status
+   - (category, status) → browse pe categorii
+   - (createdAt desc)   → sortarea implicită din listare                */
+auctionSchema.index({ status: 1, deadline: 1 });
+auctionSchema.index({ buyer: 1, status: 1, createdAt: -1 });
+auctionSchema.index({ category: 1, status: 1 });
+auctionSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('Auction', auctionSchema);

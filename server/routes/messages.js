@@ -1,5 +1,7 @@
 const router         = require('express').Router();
 const authMiddleware = require('../middleware/auth');
+const { validateObjectId } = require('../utils/validateObjectId');
+const { messageLimiter } = require('../middleware/rateLimiters');
 const Conversation   = require('../models/Conversation');
 const Message        = require('../models/Message');
 const { upload, cloudinary } = require('../config/cloudinary');
@@ -48,7 +50,7 @@ router.post('/conversation', authMiddleware, async (req, res) => {
 });
 
 // GET /api/messages/:conversationId — mesajele unei conversatii
-router.get('/:conversationId', authMiddleware, async (req, res) => {
+router.get('/:conversationId', authMiddleware, validateObjectId('conversationId'), async (req, res) => {
   try {
     const conversation = await Conversation.findById(req.params.conversationId);
     if (!conversation) return res.status(404).json({ message: 'Conversație negăsită' });
@@ -73,7 +75,7 @@ router.get('/:conversationId', authMiddleware, async (req, res) => {
 });
 
 // POST /api/messages/:conversationId — trimite mesaj text
-router.post('/:conversationId', authMiddleware, async (req, res) => {
+router.post('/:conversationId', authMiddleware, messageLimiter, validateObjectId('conversationId'), async (req, res) => {
   try {
     const { content } = req.body;
     if (!content?.trim()) return res.status(400).json({ message: 'Mesajul e gol' });
@@ -127,7 +129,7 @@ router.post('/:conversationId', authMiddleware, async (req, res) => {
 });
 
 // POST /api/messages/:conversationId/image — trimite imagine
-router.post('/:conversationId/image', authMiddleware, upload.single('image'), async (req, res) => {
+router.post('/:conversationId/image', authMiddleware, messageLimiter, validateObjectId('conversationId'), upload.single('image'), async (req, res) => {
   try {
     const conversation = await Conversation.findById(req.params.conversationId);
     if (!conversation) return res.status(404).json({ message: 'Conversație negăsită' });
@@ -178,7 +180,7 @@ router.post('/:conversationId/image', authMiddleware, upload.single('image'), as
 });
 
 // DELETE /api/messages/:conversationId — sterge conversatia
-router.delete('/:conversationId', authMiddleware, async (req, res) => {
+router.delete('/:conversationId', authMiddleware, validateObjectId('conversationId'), async (req, res) => {
   try {
     const conversation = await Conversation.findById(req.params.conversationId);
     if (!conversation) return res.status(404).json({ message: 'Conversație negăsită' });

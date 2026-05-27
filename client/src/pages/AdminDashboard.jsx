@@ -180,7 +180,19 @@ export default function AdminDashboard() {
     if (tab === 'invoices') fetchInvoices();
   }, [tab]);
 
-  const fetchUsers    = async () => { setLoading(true); try { const res = await fetch(`${API_URL}/api/admin/users`,    { headers: { Authorization: `Bearer ${token}` } }); setUsers(await res.json());    } finally { setLoading(false); } };
+  const fetchUsers    = async () => {
+    setLoading(true);
+    try {
+      // Endpoint paginat — pentru compatibilitate suportăm ambele formate de răspuns
+      const res = await fetch(`${API_URL}/api/admin/users?page=1&limit=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setUsers(Array.isArray(data) ? data : (data.data || []));
+    } finally {
+      setLoading(false);
+    }
+  };
   const fetchAuctions = async () => { setLoading(true); try { const res = await fetch(`${API_URL}/api/admin/auctions`, { headers: { Authorization: `Bearer ${token}` } }); setAuctions(await res.json()); } finally { setLoading(false); } };
   const fetchInvoices = async () => { setLoading(true); try { const res = await fetch(`${API_URL}/api/admin/invoices`, { headers: { Authorization: `Bearer ${token}` } }); setInvoices(await res.json()); } finally { setLoading(false); } };
 

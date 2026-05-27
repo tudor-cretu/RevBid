@@ -6,6 +6,8 @@ const AuctionRequest = require('../models/AuctionRequest');
 const Bid            = require('../models/Bid');
 const User           = require('../models/User');
 const authMiddleware = require('../middleware/auth');
+const { validateObjectId } = require('../utils/validateObjectId');
+const { approvalLimiter } = require('../middleware/rateLimiters');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
 const notifyUser     = require('../utils/notify');
@@ -15,6 +17,62 @@ const EDITABLE_FIELDS = [
   'title', 'description', 'category', 'quantity', 'tags',
   'targetPrice', 'deadline', 'autoExtend', 'location',
 ];
+
+/* ── Sanitizare valori per câmp ─────────────────────────────────
+   Previne NoSQL injection (ex: { $gt: '' }, { $ne: null }) și
+   forțează tipuri corecte indiferent ce trimite clientul.          */
+function sanitizeProposedValue(field, value) {
+  switch (field) {
+    case 'title':
+    case 'description':
+    case 'category':
+    case 'quantity':
+      if (typeof value !== 'string') return null;
+      return value.trim().slice(0, 5000);
+
+    case 'tags':
+      if (!Array.isArray(value)) return null;
+      return value
+        .filter(t => typeof t === 'string')
+        .map(t => t.trim().slice(0, 50))
+        .slice(0, 20);
+
+    case 'targetPrice': {
+      if (value === null || value === '') return null;
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0 || n > 1_000_000_000) return null;
+      return n;
+    }
+
+    case 'deadline': {
+      if (!value) return null;
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return null;
+      const now      = Date.now();
+      const MAX_FUTURE = 365 * 24 * 60 * 60 * 1000;
+      if (d.getTime() <= now + 5 * 60 * 1000) return null;
+      if (d.getTime() >  now + MAX_FUTURE)    return null;
+      return d;
+    }
+
+    case 'autoExtend':
+      return !!value;
+
+    case 'location': {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+      const out = {};
+      if (typeof value.address === 'string') out.address = value.address.trim().slice(0, 500);
+      if (typeof value.city    === 'string') out.city    = value.city.trim().slice(0, 100);
+      const lat = Number(value.lat), lng = Number(value.lng);
+      if (Number.isFinite(lat) && lat >= -90  && lat <= 90)  out.lat = lat;
+      if (Number.isFinite(lng) && lng >= -180 && lng <= 180) out.lng = lng;
+      return out;
+    }
+
+    default:
+      return null;
+  }
+}
 
 // Câmpuri "importante" — vor fi evidențiate în diff view dacă licitația are bids
 const IMPORTANT_FIELDS = new Set([
@@ -46,7 +104,7 @@ async function notifyAdmins(io, text, link) {
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── POST /api/auction-requests/:auctionId/edit ─────────────── */
-router.post('/:auctionId/edit', authMiddleware, async (req, res) => {
+router.post('/:auctionId/edit', authMiddleware, approvalLimiter, validateObjectId('auctionId'), async (req, res) => {
   try {
     if (req.user.role !== 'buyer') {
       return res.status(403).json({ message: 'Doar cumpărătorii pot solicita editarea licitațiilor' });
@@ -78,12 +136,25 @@ router.post('/:auctionId/edit', authMiddleware, async (req, res) => {
       });
     }
 
-    // Filtrează câmpurile permise din body
+    // Filtrează și sanitizează câmpurile permise din body
     const proposedData = {};
+    const invalidFields = [];
     for (const field of EDITABLE_FIELDS) {
       if (req.body[field] !== undefined) {
-        proposedData[field] = req.body[field];
+        const cleaned = sanitizeProposedValue(field, req.body[field]);
+        if (cleaned === null && req.body[field] !== null) {
+          invalidFields.push(field);
+        } else {
+          proposedData[field] = cleaned;
+        }
       }
+    }
+
+    if (invalidFields.length > 0) {
+      return res.status(400).json({
+        message:       'Câmpuri invalide în cererea de editare',
+        invalidFields,
+      });
     }
 
     if (Object.keys(proposedData).length === 0) {
@@ -135,7 +206,7 @@ router.post('/:auctionId/edit', authMiddleware, async (req, res) => {
 });
 
 /* ── POST /api/auction-requests/:auctionId/delete ───────────── */
-router.post('/:auctionId/delete', authMiddleware, async (req, res) => {
+router.post('/:auctionId/delete', authMiddleware, approvalLimiter, validateObjectId('auctionId'), async (req, res) => {
   try {
     if (req.user.role !== 'buyer') {
       return res.status(403).json({ message: 'Doar cumpărătorii pot solicita ștergerea licitațiilor' });
@@ -218,7 +289,7 @@ router.get('/my', authMiddleware, async (req, res) => {
 
 /* ── GET /api/auction-requests/for/:auctionId ───────────────── */
 // Buyer: cererile pentru o licitație specifică
-router.get('/for/:auctionId', authMiddleware, async (req, res) => {
+router.get('/for/:auctionId', authMiddleware, validateObjectId('auctionId'), async (req, res) => {
   try {
     const filter = { auction: req.params.auctionId };
     // Buyerul vede doar propriile cereri; adminul vede toate
@@ -235,7 +306,7 @@ router.get('/for/:auctionId', authMiddleware, async (req, res) => {
 
 /* ── DELETE /api/auction-requests/:requestId ────────────────── */
 // Buyer: anulează o cerere pending proprie
-router.delete('/:requestId', authMiddleware, async (req, res) => {
+router.delete('/:requestId', authMiddleware, validateObjectId('requestId'), async (req, res) => {
   try {
     const request = await AuctionRequest.findById(req.params.requestId);
     if (!request) return res.status(404).json({ message: 'Cererea nu există' });
@@ -301,7 +372,7 @@ router.get('/', authMiddleware, adminOnly, async (req, res) => {
 });
 
 /* ── PUT /api/auction-requests/:requestId/approve ───────────── */
-router.put('/:requestId/approve', authMiddleware, adminOnly, async (req, res) => {
+router.put('/:requestId/approve', authMiddleware, adminOnly, validateObjectId('requestId'), async (req, res) => {
   try {
     const request = await AuctionRequest.findById(req.params.requestId)
       .populate('buyer', 'firstName email _id');
@@ -373,7 +444,7 @@ router.put('/:requestId/approve', authMiddleware, adminOnly, async (req, res) =>
 });
 
 /* ── PUT /api/auction-requests/:requestId/reject ────────────── */
-router.put('/:requestId/reject', authMiddleware, adminOnly, async (req, res) => {
+router.put('/:requestId/reject', authMiddleware, adminOnly, validateObjectId('requestId'), async (req, res) => {
   try {
     const request = await AuctionRequest.findById(req.params.requestId)
       .populate('buyer', 'firstName email _id');

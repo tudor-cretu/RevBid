@@ -9,4 +9,9 @@ const messageSchema = new mongoose.Schema({
   isRead:       { type: Boolean, default: false },
 }, { timestamps: true });
 
+/* Indexuri — conversațiile sunt aproape întotdeauna interogate
+   filtrate după conversation și sortate după createdAt.            */
+messageSchema.index({ conversation: 1, createdAt: -1 });
+messageSchema.index({ conversation: 1, sender: 1, isRead: 1 });
+
 module.exports = mongoose.model('Message', messageSchema);

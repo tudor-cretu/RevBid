@@ -55,8 +55,10 @@ export default function Navbar() {
 
   // ── Connect socket and listen for live notifications ──────────
   useEffect(() => {
-    if (!user || !token) return;
-    const s = io(API_URL, { auth: { token } });
+    if (!user) return;
+    /* withCredentials trimite cookie-ul httpOnly în handshake;
+       auth.token rămâne pentru compatibilitate (poate fi null). */
+    const s = io(API_URL, { auth: { token }, withCredentials: true });
 
     s.on('connect', () => console.log('Navbar socket conectat'));
 

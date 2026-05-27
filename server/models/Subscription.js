@@ -6,5 +6,7 @@ const subscriptionSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 subscriptionSchema.index({ user: 1, auction: 1 }, { unique: true });
+/* Necesar pentru bidSocket: "toți abonații la licitația X" */
+subscriptionSchema.index({ auction: 1 });
 
 module.exports = mongoose.model('Subscription', subscriptionSchema);

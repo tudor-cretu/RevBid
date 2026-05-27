@@ -6,20 +6,33 @@ const EVENTS = require('../utils/events');
 
 /**
  * Middleware de autentificare JWT.
+ * Token-ul poate veni din:
+ *  - cookie httpOnly `revbid_token` (calea recomandată — protejată de XSS)
+ *  - header Authorization: Bearer ... (compatibilitate cu clienții care
+ *    încă folosesc localStorage tranzitoriu)
+ *
  * Loghează orice tentativă de acces cu token invalid/expirat/lipsă.
  */
 module.exports = function authMiddleware(req, res, next) {
-  const authHeader = req.headers.authorization;
+  /* Citim mai întâi cookie-ul httpOnly (preferat), apoi Authorization. */
+  let token = null;
+  if (req.cookies && typeof req.cookies.revbid_token === 'string') {
+    token = req.cookies.revbid_token;
+  }
+  if (!token) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    }
+  }
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!token) {
     logger.fromReq(req).security(EVENTS.AUTH.TOKEN_MISSING,
       'Request fără token de autentificare', {
         metadata: { path: req.path },
       });
     return res.status(401).json({ message: 'Token lipsă' });
   }
-
-  const token = authHeader.split(' ')[1];
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);

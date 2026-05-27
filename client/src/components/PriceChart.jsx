@@ -5,15 +5,30 @@ import { API_URL } from '../config';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
-export default function PriceChart({ auctionId, startPrice, currentPrice }) {
-  const [bids, setBids] = useState([]);
+/**
+ * PriceChart
+ *
+ * Sursa de adevăr pentru oferte:
+ *  - dacă părintele pasează `bids` (cazul din AuctionDetail, unde ofertele
+ *    sunt deja menținute live prin socket `new_bid`), chart-ul reflectă
+ *    imediat orice schimbare — fără refresh, fără fetch suplimentar.
+ *  - dacă `bids` nu e pasat, facem fallback la fetch propriu (util când
+ *    componenta e folosită izolat în alt context).
+ */
+export default function PriceChart({ auctionId, startPrice, currentPrice, bids: bidsProp }) {
+  const [bidsLocal, setBidsLocal] = useState([]);
+  /* Dacă părintele controlează ofertele, folosim props; altfel state local. */
+  const bids = Array.isArray(bidsProp) ? bidsProp : bidsLocal;
 
   useEffect(() => {
+    /* Skip fetch dacă părintele deja furnizează bids. */
+    if (Array.isArray(bidsProp)) return;
     if (!auctionId) return;
-    fetch(`${API_URL}/api/bids/${auctionId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('revbid_token')}` }
-    }).then(r => r.json()).then(data => setBids(Array.isArray(data) ? data : []));
-  }, [auctionId]);
+    /* Auth via cookie httpOnly — credentials: 'include' adăugat global. */
+    fetch(`${API_URL}/api/bids/${auctionId}`)
+      .then(r => r.json())
+      .then(data => setBidsLocal(Array.isArray(data) ? data : []));
+  }, [auctionId, bidsProp]);
 
   if (bids.length === 0) {
     return (

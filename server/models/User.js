@@ -52,4 +52,9 @@ const userSchema = new mongoose.Schema({
   resetPasswordExpiry:    { type: Date,   default: null },
 }, { timestamps: true });
 
+/* Indexuri — email are deja unique. Role + createdAt e utilizat de
+   admin pentru filtrare/sortare în panou.                              */
+userSchema.index({ role: 1, createdAt: -1 });
+userSchema.index({ googleId: 1 }, { sparse: true });
+
 module.exports = mongoose.model('User', userSchema);

@@ -3,6 +3,7 @@
 const router         = require('express').Router();
 const mongoose       = require('mongoose');
 const authMiddleware = require('../middleware/auth');
+const { validateObjectId } = require('../utils/validateObjectId');
 const Notification   = require('../models/Notification');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
@@ -111,7 +112,7 @@ router.delete('/', authMiddleware, async (req, res) => {
 });
 
 /* ── PATCH /api/notifications/:id — marchează citită / necitită ───── */
-router.patch('/:id', authMiddleware, async (req, res) => {
+router.patch('/:id', authMiddleware, validateObjectId('id'), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ message: 'Notificarea nu există' });
@@ -146,7 +147,7 @@ router.patch('/:id', authMiddleware, async (req, res) => {
 });
 
 /* ── DELETE /api/notifications/:id — șterge o notificare ──────────── */
-router.delete('/:id', authMiddleware, async (req, res) => {
+router.delete('/:id', authMiddleware, validateObjectId('id'), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ message: 'Notificarea nu există' });

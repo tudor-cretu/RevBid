@@ -4,11 +4,13 @@ const router           = require('express').Router();
 const authMiddleware   = require('../middleware/auth');
 const { cloudinary, upload } = require('../config/cloudinary');
 const Auction          = require('../models/Auction');
+const { validateObjectId } = require('../utils/validateObjectId');
+const { uploadLimiter } = require('../middleware/rateLimiters');
 const logger           = require('../utils/logger');
 const EVENTS           = require('../utils/events');
 
 /* ── POST /api/upload/auction/:id ───────────────────────────── */
-router.post('/auction/:id', authMiddleware, upload.array('images', 5), async (req, res) => {
+router.post('/auction/:id', authMiddleware, uploadLimiter, validateObjectId('id'), upload.array('images', 5), async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
     if (!auction) {
@@ -74,7 +76,7 @@ router.post('/auction/:id', authMiddleware, upload.array('images', 5), async (re
 });
 
 /* ── DELETE /api/upload/image/:auctionId/:publicId ──────────── */
-router.delete('/image/:auctionId/:publicId', authMiddleware, async (req, res) => {
+router.delete('/image/:auctionId/:publicId', authMiddleware, validateObjectId('auctionId'), async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.auctionId);
     if (!auction) return res.status(404).json({ message: 'Licitația nu există' });

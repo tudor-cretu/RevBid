@@ -2,7 +2,9 @@
 
 const router         = require('express').Router();
 const Bid            = require('../models/Bid');
+const Auction        = require('../models/Auction');
 const authMiddleware = require('../middleware/auth');
+const { validateObjectId } = require('../utils/validateObjectId');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
 
@@ -50,17 +52,52 @@ router.get('/my', authMiddleware, async (req, res) => {
   }
 });
 
-/* ── GET /api/bids/:auctionId — toate ofertele unei licitații ── */
-router.get('/:auctionId', authMiddleware, async (req, res) => {
+/* ── GET /api/bids/:auctionId — ofertele unei licitații ────────
+   Reguli de acces:
+   - cumpărătorul (proprietarul licitației) vede toate ofertele
+   - adminul vede toate ofertele
+   - furnizorii care AU ofertat la această licitație văd doar
+     propriile lor oferte (nu pot vedea ofertele concurenței)
+   - oricine altcineva: 403                                            */
+router.get('/:auctionId', authMiddleware, validateObjectId('auctionId'), async (req, res) => {
   try {
-    const bids = await Bid.find({ auction: req.params.auctionId })
-      .populate('supplier', 'firstName lastName companyName rating')
-      .sort({ amount: 1 });
+    const auction = await Auction.findById(req.params.auctionId).select('buyer status');
+    if (!auction) return res.status(404).json({ message: 'Licitația nu există' });
+
+    const uid     = req.user.id;
+    const isOwner = auction.buyer.toString() === uid;
+    const isAdmin = req.user.role === 'admin';
+
+    let bids;
+    if (isOwner || isAdmin) {
+      /* Acces complet — vede toate ofertele cu informații despre furnizori. */
+      bids = await Bid.find({ auction: req.params.auctionId })
+        .populate('supplier', 'firstName lastName companyName rating')
+        .sort({ amount: 1 });
+    } else {
+      /* Furnizorul vede doar ofertele proprii — doar dacă a ofertat. */
+      const hasOwnBid = await Bid.exists({
+        auction:  req.params.auctionId,
+        supplier: uid,
+      });
+      if (!hasOwnBid) {
+        logger.fromReq(req).security(EVENTS.BID.UNAUTHORIZED_VIEW || EVENTS.AUCTION.UNAUTHORIZED,
+          'Tentativă de vizualizare oferte fără permisiune', {
+            entityType: 'auction',
+            entityId:   req.params.auctionId,
+          });
+        return res.status(403).json({ message: 'Acces interzis la oferte' });
+      }
+      bids = await Bid.find({ auction: req.params.auctionId, supplier: uid })
+        .populate('supplier', 'firstName lastName companyName rating')
+        .sort({ amount: 1 });
+    }
 
     logger.fromReq(req).debug(EVENTS.BID.WINNING,
       `Fetch oferte pentru licitația ${req.params.auctionId} (${bids.length})`, {
         entityType: 'auction',
         entityId:   req.params.auctionId,
+        metadata:   { isOwner, isAdmin, count: bids.length },
       });
 
     res.json(bids);

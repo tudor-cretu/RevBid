@@ -37,7 +37,7 @@ export default function Messages() {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const connectSocket = () => {
-    const s = io(API_URL, { auth: { token } });
+    const s = io(API_URL, { auth: { token }, withCredentials: true });
     s.on('new_message', ({ conversationId, message }) => {
       if (activeConv?._id === conversationId) setMessages(prev => [...prev, message]);
       setConversations(prev => prev.map(c => c._id === conversationId ? { ...c, lastMessage: message.type === 'image' ? '📷 Imagine' : message.content, lastMessageAt: message.createdAt } : c));

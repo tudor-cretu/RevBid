@@ -1,9 +1,10 @@
 const router         = require('express').Router();
 const authMiddleware = require('../middleware/auth');
+const { validateObjectId } = require('../utils/validateObjectId');
 const Subscription   = require('../models/Subscription');
 
 // GET /api/subscriptions/check/:auctionId
-router.get('/check/:auctionId', authMiddleware, async (req, res) => {
+router.get('/check/:auctionId', authMiddleware, validateObjectId('auctionId'), async (req, res) => {
   try {
     const sub = await Subscription.findOne({
       user:    req.user.id,
@@ -16,7 +17,7 @@ router.get('/check/:auctionId', authMiddleware, async (req, res) => {
 });
 
 // POST /api/subscriptions/:auctionId — aboneaza
-router.post('/:auctionId', authMiddleware, async (req, res) => {
+router.post('/:auctionId', authMiddleware, validateObjectId('auctionId'), async (req, res) => {
   try {
     await Subscription.findOneAndUpdate(
       { user: req.user.id, auction: req.params.auctionId },
@@ -30,7 +31,7 @@ router.post('/:auctionId', authMiddleware, async (req, res) => {
 });
 
 // DELETE /api/subscriptions/:auctionId — dezaboneaza
-router.delete('/:auctionId', authMiddleware, async (req, res) => {
+router.delete('/:auctionId', authMiddleware, validateObjectId('auctionId'), async (req, res) => {
   try {
     await Subscription.deleteOne({
       user:    req.user.id,

@@ -6,4 +6,6 @@ const auctionChatSchema = new mongoose.Schema({
   content: { type: String, required: true, trim: true },
 }, { timestamps: true });
 
+auctionChatSchema.index({ auction: 1, createdAt: 1 });
+
 module.exports = mongoose.model('AuctionChat', auctionChatSchema);

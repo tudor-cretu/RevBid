@@ -8,6 +8,8 @@ const Bid            = require('../models/Bid');
 const Subscription   = require('../models/Subscription');
 const AuctionChat    = require('../models/AuctionChat');
 const notifyUser     = require('../utils/notify');
+const { validateObjectId } = require('../utils/validateObjectId');
+const { auctionCreateLimiter, auctionChatLimiter } = require('../middleware/rateLimiters');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
 
@@ -45,12 +47,30 @@ function validateForPublish(data) {
     errors.deadline = 'Deadline-ul este obligatoriu.';
   } else {
     const d = new Date(data.deadline);
+    const MIN_DURATION_MS = 5 * 60 * 1000;                  // 5 minute
+    const MAX_DURATION_MS = 365 * 24 * 60 * 60 * 1000;      // 1 an
+    const now = Date.now();
     if (isNaN(d.getTime())) {
       missing.push('deadline');
       errors.deadline = 'Deadline-ul are un format invalid.';
-    } else if (d.getTime() <= Date.now()) {
-      errors.deadline = 'Deadline-ul trebuie să fie în viitor.';
+    } else if (d.getTime() <= now + MIN_DURATION_MS) {
+      errors.deadline = 'Deadline-ul trebuie să fie cel puțin 5 minute în viitor.';
       if (!missing.includes('deadline')) missing.push('deadline');
+    } else if (d.getTime() > now + MAX_DURATION_MS) {
+      errors.deadline = 'Deadline-ul nu poate fi mai departe de 1 an în viitor.';
+      if (!missing.includes('deadline')) missing.push('deadline');
+    }
+  }
+
+  /* Validare buget de pornire — limite rezonabile pentru a preveni
+     valori absurde sau overflow. */
+  if (data.startPrice !== undefined && data.startPrice !== null && data.startPrice !== '') {
+    const sp = Number(data.startPrice);
+    if (!isNaN(sp) && sp > 0) {
+      if (sp > 1_000_000_000) {
+        errors.startPrice = 'Bugetul de pornire este nerealist de mare.';
+        if (!missing.includes('startPrice')) missing.push('startPrice');
+      }
     }
   }
 
@@ -146,7 +166,7 @@ router.get('/', optionalAuth, async (req, res) => {
 
 /* ── GET /api/auctions/:id ─────────────────────────────────────
    Drafturile sunt accesibile doar proprietarului / adminului.      */
-router.get('/:id', optionalAuth, async (req, res) => {
+router.get('/:id', optionalAuth, validateObjectId('id'), async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id)
       .populate('buyer', 'firstName lastName companyName email phone avatar rating');
@@ -187,7 +207,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
    Body acceptă `status: 'draft' | 'active'`.
    - draft  → se salvează cu orice câmpuri (chiar incomplete)
    - active → se aplică validarea completă de publicare              */
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', authMiddleware, auctionCreateLimiter, async (req, res) => {
   try {
     if (req.user.role !== 'buyer') {
       logger.fromReq(req).security(EVENTS.AUCTION.UNAUTHORIZED,
@@ -274,7 +294,7 @@ router.post('/', authMiddleware, async (req, res) => {
    Editare directă. Drafturile pot fi editate complet (orice câmp).
    Licitațiile active păstrează lista restrânsă de câmpuri.
    (Modificarea licitațiilor active trece de regulă prin approval flow.) */
-router.put('/:id', authMiddleware, async (req, res) => {
+router.put('/:id', authMiddleware, validateObjectId('id'), async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
     if (!auction) return res.status(404).json({ message: 'Licitația nu există' });
@@ -329,7 +349,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
 /* ── POST /api/auctions/:id/publish ─────────────────────────────
    Publică un draft. Aplică (opțional) câmpuri din body, validează
    toate câmpurile obligatorii și trece licitația în starea `active`. */
-router.post('/:id/publish', authMiddleware, async (req, res) => {
+router.post('/:id/publish', authMiddleware, validateObjectId('id'), async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
     if (!auction) return res.status(404).json({ message: 'Licitația nu există' });
@@ -406,7 +426,7 @@ router.post('/:id/publish', authMiddleware, async (req, res) => {
 /* ── DELETE /api/auctions/:id ───────────────────────────────────
    Drafturile se șterg definitiv (nu au relații/istoric).
    Licitațiile publicate se anulează (soft delete).                  */
-router.delete('/:id', authMiddleware, async (req, res) => {
+router.delete('/:id', authMiddleware, validateObjectId('id'), async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id);
     if (!auction) return res.status(404).json({ message: 'Licitația nu există' });
@@ -449,7 +469,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 });
 
 /* ── GET /api/auctions/:id/chat ─────────────────────────────────── */
-router.get('/:id/chat', authMiddleware, async (req, res) => {
+router.get('/:id/chat', authMiddleware, validateObjectId('id'), async (req, res) => {
   try {
     const messages = await AuctionChat.find({ auction: req.params.id })
       .populate('sender', 'firstName lastName avatar role')
@@ -463,7 +483,7 @@ router.get('/:id/chat', authMiddleware, async (req, res) => {
 });
 
 /* ── POST /api/auctions/:id/chat ────────────────────────────────── */
-router.post('/:id/chat', authMiddleware, async (req, res) => {
+router.post('/:id/chat', authMiddleware, auctionChatLimiter, validateObjectId('id'), async (req, res) => {
   try {
     const { content } = req.body;
     if (!content?.trim()) return res.status(400).json({ message: 'Mesajul e gol' });

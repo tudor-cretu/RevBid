@@ -62,7 +62,8 @@ const invoiceSchema = new mongoose.Schema({
   emailedAtSupplier:{ type: Date, default: null },
 }, { timestamps: true });
 
-invoiceSchema.index({ buyer: 1 });
-invoiceSchema.index({ supplier: 1 });
+invoiceSchema.index({ buyer: 1, createdAt: -1 });
+invoiceSchema.index({ supplier: 1, createdAt: -1 });
+invoiceSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Invoice', invoiceSchema);

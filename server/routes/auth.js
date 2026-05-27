@@ -8,6 +8,7 @@ const User           = require('../models/User');
 const sendMail       = require('../config/mailer');
 const { resetPasswordTemplate } = require('../config/emailTemplates');
 const authMiddleware = require('../middleware/auth');
+const { validateObjectId } = require('../utils/validateObjectId');
 const passport       = require('../config/passport');
 const logger         = require('../utils/logger');
 const EVENTS         = require('../utils/events');
@@ -17,11 +18,32 @@ const {
 } = require('../utils/company');
 
 /* ── Helpers ─────────────────────────────────────────────────── */
+const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 const generateToken = (user) => jwt.sign(
   { id: user._id, role: user.role },
   process.env.JWT_SECRET,
   { expiresIn: '7d' }
 );
+
+/* Setează cookie-ul httpOnly cu JWT-ul.
+   - httpOnly  → inaccesibil din JavaScript (protecție XSS)
+   - secure    → doar HTTPS în producție
+   - sameSite  → 'lax' permite navigare cross-site GET dar blochează CSRF
+                 pe POST/PUT/DELETE (suficient pentru API protejat) */
+function setAuthCookie(res, token) {
+  res.cookie('revbid_token', token, {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge:   TOKEN_TTL_MS,
+    path:     '/',
+  });
+}
+
+function clearAuthCookie(res) {
+  res.clearCookie('revbid_token', { path: '/' });
+}
 
 const userPayload = (user) => ({
   id:          user._id,
@@ -89,12 +111,29 @@ function clientIp(req) {
 }
 
 /* ── Validare parolă nouă ────────────────────────────────────────
-   Minim 8 caractere, cel puțin o literă și o cifră.               */
+   - minim 10 caractere
+   - cel puțin o literă mică
+   - cel puțin o literă mare
+   - cel puțin o cifră
+   - cel puțin un caracter special
+   - fără secvențe repetitive (aaaaaaaa) sau parole comune          */
+const COMMON_PASSWORDS = new Set([
+  'password', 'parola123', 'qwerty123', 'admin123', 'welcome123',
+  '12345678', '123456789', '1234567890', 'iloveyou', 'sunshine',
+  'password1', 'password123', 'letmein123', 'monkey123', 'football',
+  'abc12345', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm', 'pass1234',
+]);
+
 function validatePassword(pw) {
   if (!pw || typeof pw !== 'string') return 'Parola este obligatorie';
-  if (pw.length < 8)        return 'Parola trebuie să aibă cel puțin 8 caractere';
-  if (!/[a-zA-Z]/.test(pw)) return 'Parola trebuie să conțină cel puțin o literă';
-  if (!/[0-9]/.test(pw))    return 'Parola trebuie să conțină cel puțin o cifră';
+  if (pw.length < 10) return 'Parola trebuie să aibă cel puțin 10 caractere';
+  if (pw.length > 128) return 'Parola este prea lungă (maxim 128 caractere)';
+  if (!/[a-z]/.test(pw)) return 'Parola trebuie să conțină cel puțin o literă mică';
+  if (!/[A-Z]/.test(pw)) return 'Parola trebuie să conțină cel puțin o literă mare';
+  if (!/[0-9]/.test(pw)) return 'Parola trebuie să conțină cel puțin o cifră';
+  if (!/[^a-zA-Z0-9]/.test(pw)) return 'Parola trebuie să conțină cel puțin un caracter special (ex: !@#$%)';
+  if (/(.)\1{3,}/.test(pw)) return 'Parola nu poate conține același caracter repetat de 4+ ori';
+  if (COMMON_PASSWORDS.has(pw.toLowerCase())) return 'Parola aleasă este prea comună';
   return null;
 }
 
@@ -102,6 +141,16 @@ function validatePassword(pw) {
 router.post('/register', async (req, res) => {
   try {
     const { firstName, lastName, email, password, role, companyName, phone } = req.body;
+
+    /* Validare parolă — aplică aceleași reguli ca la reset-password */
+    const pwError = validatePassword(password);
+    if (pwError) {
+      logger.fromReq(req).warn(EVENTS.AUTH.REGISTER_FAILED,
+        'Validare parolă eșuată la înregistrare', {
+          metadata: { email: maskEmail(email || ''), reason: pwError },
+        });
+      return res.status(400).json({ message: pwError });
+    }
 
     const exists = await User.findOne({ email });
     if (exists) {
@@ -205,6 +254,7 @@ router.post('/verify', async (req, res) => {
       });
 
     const token = generateToken(user);
+    setAuthCookie(res, token);
     res.json({ token, user: userPayload(user) });
 
   } catch (err) {
@@ -327,6 +377,7 @@ router.post('/login', async (req, res) => {
       });
 
     const token = generateToken(user);
+    setAuthCookie(res, token);
     res.json({ token, user: userPayload(user) });
 
   } catch (err) {
@@ -488,6 +539,9 @@ router.get('/google/callback',
         metadata:   { email: maskEmail(req.user?.email), role: req.user?.role },
       });
     const token = generateToken(req.user);
+    /* Setăm cookie-ul httpOnly înainte de redirect — clientul nu va mai
+       avea nevoie de tokenul din query string (îl ignoră / îl șterge). */
+    setAuthCookie(res, token);
     res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${token}`);
   }
 );
@@ -571,6 +625,11 @@ router.put('/company', authMiddleware, async (req, res) => {
 router.put('/change-password', authMiddleware, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
+
+    /* Validare parolă nouă */
+    const pwError = validatePassword(newPassword);
+    if (pwError) return res.status(400).json({ message: pwError });
+
     const user = await User.findById(req.user.id);
 
     if (!user.passwordHash) {
@@ -609,6 +668,7 @@ router.put('/change-password', authMiddleware, async (req, res) => {
 router.delete('/account', authMiddleware, async (req, res) => {
   try {
     await User.findByIdAndDelete(req.user.id);
+    clearAuthCookie(res);
 
     logger.fromReq(req).audit(EVENTS.AUTH.ACCOUNT_DELETED,
       'Cont șters de utilizator', {
@@ -622,6 +682,15 @@ router.delete('/account', authMiddleware, async (req, res) => {
     logger.logReqError(req, EVENTS.SYSTEM.UNHANDLED_ERROR, err);
     res.status(500).json({ message: 'Eroare server', error: err.message });
   }
+});
+
+/* ── LOGOUT ───────────────────────────────────────────────────
+   Endpoint dedicat care șterge cookie-ul httpOnly. Pentru utilizatorii
+   cu auth pe cookie, asta e singura cale de logout server-side
+   (clientul nu poate șterge cookie-ul httpOnly direct).               */
+router.post('/logout', (req, res) => {
+  clearAuthCookie(res);
+  res.json({ message: 'Logout reușit' });
 });
 
 /* ── AVATAR ──────────────────────────────────────────────────── */
@@ -670,7 +739,7 @@ router.put('/avatar', authMiddleware, async (req, res) => {
 });
 
 /* ── PROFILE PUBLIC ──────────────────────────────────────────── */
-router.get('/profile/:id', async (req, res) => {
+router.get('/profile/:id', validateObjectId('id'), async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
       .select('firstName lastName companyName role avatar city rating reviewCount createdAt');
@@ -683,7 +752,7 @@ router.get('/profile/:id', async (req, res) => {
 });
 
 /* ── PROFILE STATS ───────────────────────────────────────────── */
-router.get('/profile/:id/stats', async (req, res) => {
+router.get('/profile/:id/stats', validateObjectId('id'), async (req, res) => {
   try {
     const Auction = require('../models/Auction');
     const Bid     = require('../models/Bid');

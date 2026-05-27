@@ -1,10 +1,12 @@
 'use strict';
 
-const express  = require('express');
-const mongoose = require('mongoose');
-const cors     = require('cors');
-const http     = require('http');
-const { Server } = require('socket.io');
+const express      = require('express');
+const mongoose     = require('mongoose');
+const cors         = require('cors');
+const http         = require('http');
+const helmet       = require('helmet');
+const cookieParser = require('cookie-parser');
+const { Server }   = require('socket.io');
 require('dotenv').config();
 
 const logger          = require('./utils/logger');
@@ -12,17 +14,53 @@ const EVENTS          = require('./utils/events');
 const requestId       = require('./middleware/requestId');
 const requestLogger   = require('./middleware/requestLogger');
 
+/* ── Validări secrete critice la pornire ─────────────────────
+   Refuzăm să pornim în producție fără secrete proprii — niciun
+   fallback hardcodat care ar permite session hijacking.        */
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET nu este setat în .env');
+  process.exit(1);
+}
+if (!process.env.SESSION_SECRET) {
+  console.error('FATAL: SESSION_SECRET nu este setat în .env');
+  process.exit(1);
+}
+if (process.env.SESSION_SECRET.length < 32) {
+  console.error('FATAL: SESSION_SECRET trebuie să aibă cel puțin 32 de caractere');
+  process.exit(1);
+}
+
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
-  cors: { origin: process.env.CLIENT_URL || 'http://localhost:5173' }
+  cors: {
+    origin:      CLIENT_URL,
+    credentials: true,
+  },
 });
 const session  = require('express-session');
 const passport = require('./config/passport');
 
+/* ── Security headers (helmet) ─────────────────────────────────
+   Setează automat: X-Frame-Options, X-Content-Type-Options,
+   Strict-Transport-Security, Referrer-Policy etc.
+   contentSecurityPolicy o lăsăm dezactivată — frontend-ul e
+   servit separat de Vite și are nevoie de configurare proprie. */
+app.use(helmet({
+  contentSecurityPolicy:    false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
 /* ── Middleware globale ──────────────────────────────────────── */
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
-app.use(express.json());
+app.use(cors({
+  origin:      CLIENT_URL,
+  credentials: true,
+}));
+app.use(express.json({ limit: '1mb' }));
+app.use(cookieParser());
 
 /* Request ID — trebuie să fie primul, înainte de orice logging */
 app.use(requestId);
@@ -31,9 +69,15 @@ app.use(requestId);
 app.use(requestLogger);
 
 app.use(session({
-  secret:            process.env.SESSION_SECRET || 'revbid_secret',
+  secret:            process.env.SESSION_SECRET,
   resave:            false,
   saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge:   24 * 60 * 60 * 1000,
+  },
 }));
 app.use(passport.initialize());
 app.use(passport.session());

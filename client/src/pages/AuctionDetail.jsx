@@ -270,7 +270,7 @@ export default function AuctionDetail() {
   const [socketReady, setSocketReady] = useState(false);
 
   const connectSocket = () => {
-    const s = io(API_URL, { auth: { token } });
+    const s = io(API_URL, { auth: { token }, withCredentials: true });
     s.on('connect', () => {
       s.emit('join_auction', id);
       setStatus('conectat');
@@ -643,7 +643,12 @@ export default function AuctionDetail() {
               </div>
             )}
 
-            <PriceChart auctionId={id} startPrice={auction.startPrice} currentPrice={auction.currentPrice} />
+            <PriceChart
+              auctionId={id}
+              startPrice={auction.startPrice}
+              currentPrice={auction.currentPrice}
+              bids={bids}
+            />
             <AuctionChatBox auctionId={id} socket={socketRef.current} />
           </div>
 

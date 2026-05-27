@@ -21,6 +21,8 @@ const User              = require('../models/User');
 const Review            = require('../models/Review');
 const AuctionCompletion = require('../models/AuctionCompletion');
 const authMiddleware    = require('../middleware/auth');
+const { validateObjectId } = require('../utils/validateObjectId');
+const { reviewLimiter } = require('../middleware/rateLimiters');
 const notifyUser        = require('../utils/notify');
 const sendMail          = require('../config/mailer');
 const { deliveryConfirmedTemplate, receiptConfirmedTemplate } = require('../config/emailTemplates');
@@ -98,7 +100,7 @@ async function notifyReadyForReview(io, comp, auction) {
 }
 
 /* ── GET /auctions/:id/completion — starea workflow-ului ─────────── */
-router.get('/auctions/:id/completion', authMiddleware, async (req, res) => {
+router.get('/auctions/:id/completion', authMiddleware, validateObjectId('id'), async (req, res) => {
   try {
     const comp = await getOrCreateCompletion(req.params.id);
     if (!comp) return res.json({ exists: false });
@@ -140,7 +142,7 @@ router.get('/auctions/:id/completion', authMiddleware, async (req, res) => {
 });
 
 /* ── POST /auctions/:id/confirm-delivery — furnizorul confirmă ───── */
-router.post('/auctions/:id/confirm-delivery', authMiddleware, async (req, res) => {
+router.post('/auctions/:id/confirm-delivery', authMiddleware, validateObjectId('id'), async (req, res) => {
   try {
     const comp = await getOrCreateCompletion(req.params.id);
     if (!comp) return res.status(404).json({ message: 'Licitația nu are un câștigător sau nu este finalizată.' });
@@ -195,7 +197,7 @@ router.post('/auctions/:id/confirm-delivery', authMiddleware, async (req, res) =
 });
 
 /* ── POST /auctions/:id/confirm-receipt — buyerul confirmă ───────── */
-router.post('/auctions/:id/confirm-receipt', authMiddleware, async (req, res) => {
+router.post('/auctions/:id/confirm-receipt', authMiddleware, validateObjectId('id'), async (req, res) => {
   try {
     const comp = await getOrCreateCompletion(req.params.id);
     if (!comp) return res.status(404).json({ message: 'Licitația nu are un câștigător sau nu este finalizată.' });
@@ -250,7 +252,7 @@ router.post('/auctions/:id/confirm-receipt', authMiddleware, async (req, res) =>
 });
 
 /* ── POST /auctions/:id/reviews — creează un review ──────────────── */
-router.post('/auctions/:id/reviews', authMiddleware, async (req, res) => {
+router.post('/auctions/:id/reviews', authMiddleware, reviewLimiter, validateObjectId('id'), async (req, res) => {
   try {
     const comp = await getOrCreateCompletion(req.params.id);
     if (!comp) return res.status(404).json({ message: 'Licitația nu are un câștigător sau nu este finalizată.' });
@@ -346,7 +348,7 @@ router.post('/auctions/:id/reviews', authMiddleware, async (req, res) => {
 });
 
 /* ── GET /users/:id/reviews — review-urile primite de un user ────── */
-router.get('/users/:id/reviews', async (req, res) => {
+router.get('/users/:id/reviews', validateObjectId('id'), async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({ message: 'Identificator invalid' });
@@ -387,7 +389,7 @@ router.get('/users/:id/reviews', async (req, res) => {
 });
 
 /* ── GET /users/:id/rating-summary — rezumat rating ──────────────── */
-router.get('/users/:id/rating-summary', async (req, res) => {
+router.get('/users/:id/rating-summary', validateObjectId('id'), async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({ message: 'Identificator invalid' });

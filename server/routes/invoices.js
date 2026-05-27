@@ -3,6 +3,8 @@
 const router         = require('express').Router();
 const Invoice        = require('../models/Invoice');
 const authMiddleware = require('../middleware/auth');
+const { validateObjectId } = require('../utils/validateObjectId');
+const { invoiceLimiter } = require('../middleware/rateLimiters');
 const { buildInvoicePdf } = require('../utils/invoiceDoc');
 const { companyCompleteness } = require('../utils/company');
 const logger         = require('../utils/logger');
@@ -57,7 +59,7 @@ const party = u => (u ? {
 } : null);
 
 /* ── GET /api/invoices/auction/:auctionId — metadata + contraparte ── */
-router.get('/auction/:auctionId', authMiddleware, async (req, res) => {
+router.get('/auction/:auctionId', authMiddleware, validateObjectId('auctionId'), async (req, res) => {
   try {
     const r = await loadAuthorized(req, res);
     if (!r) return;
@@ -98,7 +100,7 @@ router.get('/auction/:auctionId', authMiddleware, async (req, res) => {
 });
 
 /* ── GET /api/invoices/auction/:auctionId/download — PDF ──────────── */
-router.get('/auction/:auctionId/download', authMiddleware, async (req, res) => {
+router.get('/auction/:auctionId/download', authMiddleware, invoiceLimiter, validateObjectId('auctionId'), async (req, res) => {
   try {
     const r = await loadAuthorized(req, res);
     if (!r) return;

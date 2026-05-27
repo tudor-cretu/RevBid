@@ -11,10 +11,18 @@ const jwt = require('jsonwebtoken');
  * utilizatorii autentificați (ex: ascunderea drafturilor altor cumpărători).
  */
 module.exports = function optionalAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
+  let token = null;
+  if (req.cookies && typeof req.cookies.revbid_token === 'string') {
+    token = req.cookies.revbid_token;
+  }
+  if (!token) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    }
+  }
 
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
+  if (token) {
     try {
       req.user = jwt.verify(token, process.env.JWT_SECRET);
     } catch {
