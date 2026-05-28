@@ -94,6 +94,7 @@ app.use('/api/subscriptions',    require('./routes/subscriptions'));
 app.use('/api/notifications',    require('./routes/notifications'));
 app.use('/api/auction-requests', require('./routes/auctionRequests'));
 app.use('/api/invoices',         require('./routes/invoices'));
+app.use('/api/statistici',       require('./routes/analytics'));
 app.use('/api',                  require('./routes/reviews'));
 
 

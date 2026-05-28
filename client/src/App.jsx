@@ -19,7 +19,19 @@ import Messages          from './pages/Messages';
 import LandingPage       from './pages/LandingPage';
 import MyBids            from './pages/MyBids';
 import Notifications     from './pages/Notifications';
+import BuyerStatistici    from './pages/dashboard/BuyerAnalytics';
+import SupplierStatistici from './pages/dashboard/SupplierAnalytics';
 import './App.css';
+
+/* Router statistici — alege componenta corectă în funcție de rol.
+   Adminii sunt redirecționați la dashboard (nu au statistici proprii). */
+function StatisticiRouter() {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" />;
+  if (user.role === 'buyer')    return <BuyerStatistici />;
+  if (user.role === 'supplier') return <SupplierStatistici />;
+  return <Navigate to="/dashboard" />;
+}
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -51,6 +63,7 @@ function App() {
           <Route path="/reset-password"   element={<ResetPassword />} />
           <Route path="/auth/callback"    element={<AuthCallback />} />
           <Route path="/dashboard"      element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/dashboard/statistici" element={<ProtectedRoute><StatisticiRouter /></ProtectedRoute>} />
           <Route path="/auction/create"              element={<ProtectedRoute><CreateAuction /></ProtectedRoute>} />
           <Route path="/auction/:id/edit"            element={<ProtectedRoute><CreateAuction /></ProtectedRoute>} />
           <Route path="/auction/:id"                 element={<ProtectedRoute><AuctionDetail /></ProtectedRoute>} />
