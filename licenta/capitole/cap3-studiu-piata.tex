@@ -1,0 +1,166 @@
+\chapter{Studiu de piață și tehnologii}
+\label{chap:piata}
+
+Acest capitol poziționează lucrarea în contextul existent, pe trei planuri: fundamentele licitațiilor inverse din literatura de specialitate, soluțiile comerciale și publice disponibile pe piață (cu limitările lor) și tehnologiile alese pentru implementare, analizate comparativ cu alternativele relevante.
+
+\section{Licitațiile inverse în literatura de specialitate}
+
+Teoria licitațiilor distinge patru formate clasice: licitația engleză (ascendentă, deschisă), licitația olandeză (descendentă, deschisă), licitația cu ofertă sigilată de prim preț și licitația Vickrey (ofertă sigilată, al doilea preț), ale cărei proprietăți de stimulare a ofertării oneste au fost demonstrate de Vickrey \cite{vickrey1961}. McAfee și McMillan \cite{mcafee1987} definesc licitația drept „o instituție de piață cu un set explicit de reguli care determină alocarea resurselor și prețurile pe baza ofertelor participanților'' și analizează echivalențele de venit dintre formate, iar Klemperer \cite{klemperer1999} oferă o sistematizare a întregii literaturi.
+
+\textbf{Licitația inversă} (numită și licitație de achiziție --- \textit{procurement auction}) inversează rolurile: un singur cumpărător, mai mulți vânzători concurenți, preț descrescător. Formatul implementat de RevBid este echivalentul invers al licitației engleze: licitație \textit{deschisă}, în care participanții văd prețul curent și pot reveni cu oferte îmbunătățite până la termenul limită. Formal, dacă $B = \{b_1, b_2, \ldots, b_n\}$ este mulțimea ofertelor valide depuse până la închidere, câștigătorul $w$ este:
+
+\begin{equation}
+\label{eq:castigator}
+w = \arg\min_{i \in \{1,\ldots,n\}} b_i
+\end{equation}
+
+Literatura empirică asupra licitațiilor inverse \textit{electronice} (B2B) s-a dezvoltat odată cu piețele online de la începutul anilor 2000. Kaplan și Sawhney \cite{kaplan2000} încadrează licitațiile inverse în taxonomia piețelor electronice B2B (\textit{e-hubs}), ca mecanism de agregare dinamică a prețului. Jap \cite{jap2002} analizează dinamica ofertării și efectele asupra relației cumpărător--furnizor, arătând că formatul deschis intensifică competiția, dar poate eroda încrederea furnizorilor dacă procesul nu este transparent și corect administrat. Smeltzer și Carr \cite{smeltzer2003} identifică condițiile de succes --- specificații clare ale produsului, număr suficient de furnizori calificați, volum atractiv --- și riscurile percepute de ambele părți. Emiliani \cite{emiliani2000} documentează problemele practice ale primelor implementări B2B (calitate, costuri ascunse, comportament oportunist), iar Carter et al. \cite{carter2004}, printr-un studiu calitativ pe cumpărători și furnizori, arată că economiile de preț trebuie puse în balanță cu costurile relaționale.
+
+Din această literatură rezultă direct câteva decizii de proiectare ale RevBid: (i) formatul deschis cu preț curent vizibil (maximizează competiția \cite{jap2002}); (ii) pasul minim de scădere a ofertei, care previne „zgomotul'' ofertelor simbolice; (iii) prelungirea automată a termenului, care elimină avantajul ofertelor de ultimă secundă și apropie rezultatul de echilibrul teoretic al licitației engleze \cite{mcafee1987}; (iv) mecanismul de reputație (recenzii reciproce) și fluxul formal post-licitație, care adresează exact deficitul de încredere semnalat de \cite{emiliani2000, smeltzer2003}.
+
+\section{Soluții existente pe piață}
+
+\subsection{Platforme enterprise: SAP Ariba și Coupa}
+
+SAP Ariba \cite{aribaweb} este liderul pieței de \textit{strategic sourcing}: include evenimente de tip RFI/RFP și licitații inverse în timp real, management de contracte și o rețea globală de furnizori. Coupa \cite{coupaweb} oferă o suită similară de \textit{business spend management}. Ambele sunt orientate exclusiv către corporații: implementarea presupune proiecte de integrare de luni de zile, licențierea se negociază la nivel de companie (costuri anuale de ordinul zecilor de mii de euro), iar interfețele --- nelocalizate în română --- presupun echipe dedicate de achiziții. Pentru un IMM care organizează câteva achiziții pe lună, raportul cost/beneficiu este prohibitiv.
+
+\subsection{Sectorul public: SEAP/SICAP}
+
+Sistemul Electronic de Achiziții Publice \cite{seapweb} este platforma națională prin care autoritățile contractante din România derulează achiziții publice, în conformitate cu directivele europene \cite{directive2014}. SEAP include „licitația electronică'' ca fază finală de re-ofertare cu preț descrescător --- conceptual identică licitației inverse. Limitările sunt însă structurale: platforma este rezervată \textbf{exclusiv} sectorului public (firmele private nu pot publica cereri proprii), procedurile sunt formalizate prin lege (documentații, garanții, termene rigide), iar experiența de utilizare este orientată spre conformitate, nu spre dinamica licitației (fără actualizări live, fără mecanisme de reputație între părți).
+
+\subsection{Piețe globale de sourcing: Alibaba RFQ}
+
+Serviciul RFQ (\textit{Request for Quotation}) al platformei Alibaba \cite{alibabarfq} permite cumpărătorilor să publice cereri la care furnizorii răspund cu cotații. Modelul este însă de tip „cereri--cotații'': ofertele sunt private, fără competiție vizibilă în timp real și fără preț curent care să scadă, deci fără presiunea concurențială specifică licitației inverse. Platforma este globală (orientată spre import din Asia), nelocalizată pentru piața românească, iar fluxul post-tranzacție (livrare, încredere) este gestionat în afara cererii propriu-zise.
+
+\subsection{Platforme de servicii cu ofertare: Freelancer}
+
+Platformele de tip Freelancer \cite{freelancerweb} aplică un mecanism înrudit pentru servicii digitale: clientul publică un proiect, prestatorii depun oferte, de regulă vizibile, iar clientul alege manual câștigătorul. Diferențele față de o licitație inversă reală sunt importante: prețul nu este forțat să scadă (ofertele nu se raportează la un preț curent), nu există termen cu închidere automată și desemnare deterministă a câștigătorului, iar domeniul este limitat la servicii pentru consumatori și micro-afaceri, nu achiziții B2B de produse.
+
+\subsection{Sinteză comparativă și oportunitate}
+
+Tabelul~\ref{tab:comparatie-piata} sintetizează comparația pe criteriile relevante pentru publicul țintă definit în capitolul \ref{chap:cerinte}.
+
+\begin{table}[!ht]\footnotesize\linespread{1}
+\centering
+\caption{Comparația soluțiilor existente cu platforma propusă}
+\label{tab:comparatie-piata}
+\begin{tabular}{>{\raggedright\arraybackslash}p{3.6cm} c c c c c}
+\toprule
+\textbf{Criteriu} & \textbf{Ariba/Coupa} & \textbf{SEAP} & \textbf{Alibaba RFQ} & \textbf{Freelancer} & \textbf{RevBid} \\
+\midrule
+Licitație inversă cu preț descrescător & Da & Da (faza finală) & Nu & Parțial & Da \\
+Ofertare în timp real (live) & Da & Nu & Nu & Nu & Da \\
+Accesibil IMM-urilor private & Nu & Nu & Da & Da & Da \\
+Cost pentru o firmă mică & Foarte ridicat & --- & Scăzut & Comision & Zero \\
+Localizare română & Nu & Da & Nu & Nu & Da \\
+Anti-sniping (prelungire automată) & Da & Nu & --- & Nu & Da \\
+Flux post-licitație (livrare/primire) & Da & Parțial & Nu & Parțial & Da \\
+Recenzii reciproce / reputație & Parțial & Nu & Parțial & Da & Da \\
+Document de tranzacție generat & Da & Da & Nu & Nu & Da \\
+Statistici pentru utilizator & Da & Nu & Nu & Parțial & Da \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Concluzia analizei: există un \textbf{gol clar de piață} între platformele enterprise (complete, dar inaccesibile IMM-urilor) și platformele deschise (accesibile, dar fără licitație inversă reală în timp real și fără flux post-tranzacție). RevBid țintește exact această nișă: licitații inverse \textit{live}, în limba română, gratuite, cu mecanisme integrate de încredere.
+
+\section{Tehnologii utilizate și alternative}
+
+Această secțiune prezintă stack-ul tehnologic ales și argumentează fiecare alegere față de alternativele uzuale. Criteriile de selecție au fost: potrivirea cu cerințele (în special timpul real --- RNF-05 și RF-10), productivitatea unui singur dezvoltator, maturitatea ecosistemului și costul de operare zero.
+
+\subsection{Limbajul și platforma serverului: Node.js}
+
+Backend-ul folosește \textbf{Node.js} cu framework-ul \textbf{Express 5} \cite{expressdocs}. Modelul de execuție al Node.js --- o buclă de evenimente cu I/O non-blocant --- este potrivit în mod natural pentru aplicații cu multe conexiuni concurente de tip notificare/difuzare, așa cum arată Tilkov și Vinoski \cite{tilkov2010}: serverul petrece majoritatea timpului așteptând I/O (bază de date, email), nu calculând, deci un singur fir de execuție poate servi mii de conexiuni WebSocket simultane. Alternativele luate în calcul:
+
+\begin{itemize}
+    \item \textbf{Spring Boot (Java)} --- matur, puternic tipizat, dar cu un cost de dezvoltare sensibil mai mare pentru un proiect individual și un model bazat pe fire de execuție mai costisitor pentru mii de conexiuni persistente;
+    \item \textbf{Django (Python)} --- foarte productiv pentru CRUD, însă suportul WebSocket necesită componente suplimentare (Channels, server ASGI separat), complicând arhitectura;
+    \item \textbf{NestJS (Node.js)} --- ar fi adus structură suplimentară (module, injecție de dependențe), dar cu un strat de abstractizare nejustificat la dimensiunea actuală a proiectului.
+\end{itemize}
+
+Argumentul decisiv pentru Node.js/Express a fost \textbf{unificarea limbajului}: JavaScript pe client și pe server elimină comutarea de context, permite partajarea convențiilor de validare și face ca integrarea Socket.IO (bibliotecă nativă Node.js) să fie directă.
+
+\subsection{Stocarea datelor: MongoDB}
+
+Persistența folosește \textbf{MongoDB} \cite{mongodocs}, o bază de date orientată pe documente \cite{chodorow2013}, accesată prin ODM-ul \textbf{Mongoose} \cite{mongoosedocs}, care adaugă scheme, validări și indexuri declarative. Alegerea față de o bază relațională (PostgreSQL/MySQL) se sprijină pe trei caracteristici ale domeniului:
+
+\begin{itemize}
+    \item \textbf{drafturile} --- o licitație draft poate avea orice subset de câmpuri completate; modelul pe documente permite acest lucru natural, validarea strictă fiind aplicată la nivel de aplicație doar la publicare (în relațional ar fi necesare coloane nullable peste tot sau tabele separate draft/activ);
+    \item \textbf{sub-documentele și instantaneele} --- datele de companie sunt înglobate în documentul utilizatorului (relație 1:1, fără join-uri), iar documentul de tranzacție copiază un \textit{snapshot} al datelor la momentul finalizării, rămânând stabil chiar dacă profilurile se schimbă ulterior --- un șablon firesc pe documente;
+    \item \textbf{operațiile atomice pe document} --- arbitrarea ofertelor concurente folosește actualizări condiționate atomice de tip \textit{compare-and-set} pe documentul licitației (detaliat în capitolul \ref{chap:implementare}), suficiente pentru consistența necesară fără tranzacții distribuite.
+\end{itemize}
+
+Compromisul acceptat: lipsa join-urilor native și a constrângerilor referențiale impune disciplina referințelor în aplicație (Mongoose \texttt{populate}) și agregări explicite pentru rapoarte --- acceptabil pentru schema relativ simplă a domeniului (14 colecții).
+
+\subsection{Comunicarea în timp real: WebSocket și Socket.IO}
+
+Cerința RF-10 (propagare live a ofertelor) impune un canal de comunicare de la server către client. Tabelul~\ref{tab:comparatie-realtime} compară mecanismele uzuale.
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Mecanisme de actualizare în timp real --- comparație}
+\label{tab:comparatie-realtime}
+\begin{tabular}{>{\raggedright\arraybackslash}p{3.4cm} >{\raggedright\arraybackslash}p{3.4cm} >{\raggedright\arraybackslash}p{3.4cm} >{\raggedright\arraybackslash}p{3.6cm}}
+\toprule
+\textbf{Mecanism} & \textbf{Latență} & \textbf{Cost server} & \textbf{Observații} \\
+\midrule
+Polling periodic & Egală cu intervalul de interogare (secunde) & Ridicat --- cereri repetate inutile & Simplu, dar irosește resurse și nu este „live'' \\
+Long-polling & Sub-secundă & Mediu --- reconectări repetate & Compatibilitate bună, complexitate pe server \\
+Server-Sent Events & Sub-secundă & Scăzut & Doar server$\to$client; insuficient pentru depunerea ofertelor pe același canal \\
+WebSocket \cite{rfc6455} & Zeci de milisecunde & Scăzut --- o conexiune persistentă & Bidirecțional, full-duplex; alegerea naturală \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Protocolul WebSocket \cite{rfc6455} oferă o conexiune persistentă, bidirecțională, cu overhead minim per mesaj --- exact profilul necesar ofertării (clientul trimite oferta, serverul difuzează rezultatul tuturor). Peste WebSocket, a fost aleasă biblioteca \textbf{Socket.IO} \cite{socketiodocs}, care adaugă: (i) \textit{camere} (rooms) --- difuzare țintită către participanții unei licitații sau către sesiunile unui utilizator; (ii) \textit{callback-uri de confirmare} (acknowledgements) --- emitentul ofertei primește sincron succes/eroare; (iii) reconectare automată cu fallback pe long-polling; (iv) middleware de autentificare pe handshake. Implementarea manuală a acestor mecanisme peste WebSocket „pur'' (biblioteca \texttt{ws}) ar fi reinventat exact aceste componente.
+
+\subsection{Interfața client: React și ecosistemul său}
+
+Frontend-ul este o aplicație \textit{single-page} \cite{mikowski2013} construită cu \textbf{React 19} \cite{reactdocs}. Tabelul~\ref{tab:comparatie-frontend} rezumă comparația cu alternativele majore.
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Framework-uri de interfață --- comparație calitativă}
+\label{tab:comparatie-frontend}
+\begin{tabular}{>{\raggedright\arraybackslash}p{2.4cm} >{\raggedright\arraybackslash}p{3.6cm} >{\raggedright\arraybackslash}p{3.4cm} >{\raggedright\arraybackslash}p{4.2cm}}
+\toprule
+\textbf{Framework} & \textbf{Model} & \textbf{Curbă de învățare} & \textbf{Ecosistem} \\
+\midrule
+React \cite{reactdocs} & Bibliotecă de componente, stare unidirecțională & Medie & Cel mai larg (biblioteci pentru rutare, grafice, hărți etc.) \\
+Angular & Framework complet, TypeScript obligatoriu & Abruptă & Larg, orientat enterprise \\
+Vue & Framework progresiv & Lină & Larg, dominant în Asia \\
+Svelte & Compilator (fără virtual DOM) & Lină & În creștere, mai restrâns \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Pentru natura aplicației --- pagini cu stare bogată, actualizate frecvent de evenimente externe (oferte sosite pe socket) --- modelul declarativ al React (starea determină interfața, re-randare la schimbarea stării) se potrivește direct: o ofertă nouă actualizează starea, iar prețul, lista de oferte și graficul se actualizează consistent. Dimensiunea ecosistemului, vizibilă în sondaje precum State of JS \cite{stateofjs} și în statisticile de descărcări npm \cite{npmtrends}, a cântărit de asemenea: toate bibliotecile auxiliare necesare au integrare React de primă clasă --- \textbf{React Router 7} pentru rutare client, \textbf{Chart.js} \cite{chartjsdocs} (prin \texttt{react-chartjs-2}) pentru graficele de evoluție a prețului și statistici, \textbf{Leaflet} \cite{leafletdocs} (prin \texttt{react-leaflet}) pentru hărți.
+
+Figura~\ref{fig:npm-trends} ilustrează cantitativ dominanța ecosistemului React în perioada dezvoltării proiectului.
+
+% ── FIGURĂ DE CREAT: captură de pe npmtrends.com ──
+% Sugestie: intră pe npmtrends.com, compară react vs vue vs @angular/core vs svelte
+% (interval 5 ani), fă captură graficului de descărcări săptămânale.
+\placeholderfig{0.9}{npm-trends}{6.5cm}{Captură de ecran de pe npmtrends.com cu descărcările săptămânale npm pentru react, vue, @angular/core și svelte (ultimii 5 ani). Sursa se citează în notă de subsol.}{Popularitatea framework-urilor de interfață --- descărcări săptămânale npm \protect\cite{npmtrends}}
+
+Pentru hărți, alternativa Google Maps API a fost respinsă din motive de cost și licențiere (cheie API cu facturare); Leaflet cu hărți OpenStreetMap este gratuit și suficient funcțional pentru selectarea și afișarea locației de livrare. Pentru grafice, Chart.js a fost preferat lui D3.js (nivel de abstractizare mult mai potrivit --- D3 ar fi însemnat construirea manuală a fiecărui element grafic) și lui Recharts (Chart.js este independent de framework și mai performant pe seturi mari de puncte, prin randare pe canvas).
+
+Ca unealtă de build a fost folosit \textbf{Vite} \cite{vitedocs}, care oferă pornire instantanee a serverului de dezvoltare și \textit{hot module replacement} prin module ES native, față de bundler-ele clasice bazate pe webpack (de exemplu Create React App, între timp abandonat oficial) la care fiecare pornire recompilează întreaga aplicație. În dezvoltare, diferența este resimțită la fiecare salvare de fișier; o cuantificare pe proiectul de față este inclusă în capitolul \ref{chap:evaluare}.
+
+\subsection{Autentificare și securitate}
+
+Sesiunile API folosesc \textbf{JSON Web Tokens} \cite{rfc7519}: serverul emite la autentificare un token semnat (HMAC) conținând identitatea și rolul utilizatorului, verificabil ulterior fără stare pe server --- esențial pentru că același token autentifică atât cererile REST, cât și handshake-ul Socket.IO. Alternativa sesiunilor stocate pe server ar fi cerut un mecanism separat pentru WebSocket și stocare partajată la scalare. Compromisul JWT (imposibilitatea revocării imediate) este atenuat prin durata limitată (7 zile) și prin verificări suplimentare în baza de date la conexiunile socket (detaliat în capitolul \ref{chap:implementare}). Tokenul este transportat într-un cookie \texttt{httpOnly} --- inaccesibil scripturilor, deci protejat de furt prin XSS --- conform recomandărilor OWASP \cite{owasp2021}.
+
+Parolele sunt protejate cu \textbf{bcrypt} \cite{provos1999}, o funcție de derivare costisitoare computațional și adaptabilă (factor de cost configurabil), proiectată explicit împotriva atacurilor brute-force cu hardware dedicat --- spre deosebire de hash-urile rapide de uz general (SHA-256), nepotrivite pentru parole. Autentificarea federată folosește \textbf{OAuth 2.0} cu Google (prin Passport), care elimină complet gestiunea parolei pentru utilizatorii care o preferă.
+
+\subsection{Servicii externe}
+
+\begin{itemize}
+    \item \textbf{Stocarea imaginilor: Cloudinary} --- imaginile licitațiilor și avatarurile sunt încărcate direct într-un CDN extern cu transformări la livrare (redimensionare, compresie). Alternativa clasică (Amazon S3 + CloudFront) oferă control mai fin, dar cere configurare suplimentară de procesare a imaginilor și nu are nivel gratuit permanent comparabil; stocarea locală pe server a fost exclusă (pierderea fișierelor la redistribuire, lipsa CDN).
+    \item \textbf{Email: Nodemailer + SMTP} --- emailurile tranzacționale sunt trimise prin SMTP (contul Gmail al aplicației), suficient la scara actuală și fără costuri; la volume mari, înlocuirea cu un serviciu dedicat (SendGrid, SES) este o schimbare izolată într-un singur modul de configurare.
+    \item \textbf{Generarea PDF: PDFKit} --- documentul „Rezumat de tranzacție'' este desenat programatic (poziționare exactă, fonturi cu diacritice). Alternativa --- randarea unui HTML cu un browser headless (Puppeteer) --- ar fi adăugat o dependență de sute de MB și un consum de memorie disproporționat pentru un document de o pagină.
+\end{itemize}
+
+\subsection{Sinteza alegerilor tehnologice}
+
+Stack-ul rezultat --- React + Vite pe client, Node.js/Express pe server, MongoDB ca stocare, Socket.IO pentru timp real, la care se adaugă JWT/bcrypt/Passport pentru autentificare și Cloudinary/Nodemailer/PDFKit ca servicii --- formează o arhitectură omogenă (un singur limbaj), cu cost de operare zero și potrivită cerințelor de timp real ale licitației inverse. Validarea cantitativă a acestor alegeri (latențe măsurate, debit, dimensiunea aplicației livrate) este prezentată în capitolul \ref{chap:evaluare}.

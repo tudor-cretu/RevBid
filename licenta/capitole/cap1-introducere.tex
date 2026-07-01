@@ -1,0 +1,65 @@
+\chapter{Introducere}\pagestyle{fancy}
+
+Acest capitol introduce contextul în care se încadrează lucrarea, formulează problema abordată, prezintă obiectivele urmărite și oferă o privire de ansamblu asupra soluției propuse --- platforma \textbf{RevBid} --- precum și asupra rezultatelor obținute și a structurii lucrării.
+
+\section{Context}
+
+Digitalizarea proceselor de achiziție reprezintă una dintre direcțiile majore de transformare a mediului de afaceri, comerțul electronic dintre companii (\textit{business-to-business}, B2B) depășind ca volum, în mod constant, comerțul electronic către consumatorii finali, conform statisticilor europene privind comerțul electronic \cite{eurostatecom}. Încă de la finalul anilor '90, piețele electronice B2B (\textit{e-hubs}) au fost identificate drept un mecanism cu potențial ridicat de eficientizare a achizițiilor, tocmai pentru că agregă cererea și oferta și reduc costurile de tranzacționare, așa cum arată Kaplan și Sawhney \cite{kaplan2000}.
+
+În acest peisaj, \textbf{licitația inversă} (\textit{reverse auction} sau \textit{procurement auction}) ocupă un loc special. Spre deosebire de licitația clasică (directă), în care vânzătorul oferă un bun iar cumpărătorii concurează prin prețuri din ce în ce mai mari, într-o licitație inversă rolurile sunt inversate: \textbf{cumpărătorul} publică o cerere pentru un produs sau serviciu (specificând cantitatea, termenul de livrare și, opțional, un preț țintă), iar \textbf{furnizorii} concurează între ei depunând oferte cu prețuri din ce în ce mai \textbf{mici}. La închiderea licitației câștigă furnizorul cu prețul cel mai avantajos. Fundamentele teoretice ale mecanismelor de licitație au fost puse de Vickrey \cite{vickrey1961} și sistematizate ulterior de McAfee și McMillan \cite{mcafee1987}, iar literatura dedicată licitațiilor inverse electronice documentează atât economiile de cost obținute de cumpărători, cât și condițiile în care acest instrument funcționează corect \cite{jap2002, smeltzer2003}.
+
+Relevanța domeniului este confirmată și de practica industrială: suite enterprise precum SAP Ariba \cite{aribaweb} includ licitații inverse ca instrument standard de \textit{strategic sourcing}, iar în sectorul public românesc, Sistemul Electronic de Achiziții Publice (SEAP/SICAP) \cite{seapweb} folosește faze de re-ofertare electronică cu preț descrescător, în acord cu directivele europene privind achizițiile publice \cite{directive2014}.
+
+\section{Problema}
+
+Deși mecanismul licitației inverse este matur și validat, accesul la el este puternic polarizat. La un capăt se află soluțiile enterprise (SAP Ariba \cite{aribaweb}, Coupa \cite{coupaweb}), cu costuri de licențiere și implementare prohibitive pentru companiile mici; la celălalt capăt se află platformele publice de achiziții (SEAP/SICAP \cite{seapweb}), rezervate exclusiv contractelor cu autorități ale statului. Pentru \textbf{întreprinderile mici și mijlocii din mediul privat} nu există practic un instrument accesibil, în limba română, prin care o firmă să publice o cerere de achiziție și să obțină, transparent și în timp real, oferte competitive de la mai mulți furnizori.
+
+În absența unui astfel de instrument, procesul tipic de achiziție al unui IMM rămâne manual: cereri de ofertă trimise individual prin email sau telefon, oferte primite în formate eterogene, imposibil de comparat direct, fără presiune concurențială reală între furnizori și fără trasabilitate. Acest mod de lucru ridică mai multe probleme concrete:
+
+\begin{itemize}
+    \item \textbf{lipsa concurenței transparente} --- furnizorii nu își văd reciproc ofertele, deci nu au motiv să își îmbunătățească prețul, iar literatura arată că tocmai dinamica competitivă vizibilă generează economiile \cite{jap2002, carter2004};
+    \item \textbf{costuri de timp ridicate} --- colectarea și compararea manuală a ofertelor consumă zile sau săptămâni;
+    \item \textbf{lipsa de încredere post-tranzacție} --- în afara unui cadru formal, nu există confirmări de livrare, documente de sinteză sau un istoric reputațional al partenerilor (recenzii), riscuri semnalate încă din primele studii asupra licitațiilor B2B online \cite{emiliani2000, smeltzer2003};
+    \item \textbf{lipsa datelor decizionale} --- fără un sistem informatic, firmele nu pot măsura economiile obținute, categoriile cu cea mai bună competiție sau furnizorii cu care colaborează cel mai eficient.
+\end{itemize}
+
+Problema abordată de această lucrare este, prin urmare: \textit{proiectarea și implementarea unui sistem informatic complet pentru licitații inverse, accesibil IMM-urilor, care să acopere întregul ciclu de achiziție --- de la publicarea cererii și ofertarea competitivă în timp real, până la finalizarea tranzacției, documentele aferente și mecanismele de încredere reciprocă}.
+
+\section{Obiective}
+
+Obiectivul principal al proiectului este dezvoltarea unei platforme web funcționale de licitații inverse pentru achiziții B2B, denumită \textbf{RevBid}. Acesta se descompune în următoarele obiective specifice:
+
+\begin{enumerate}
+    \item \textbf{O1.} Implementarea ciclului de viață complet al unei licitații inverse: creare (inclusiv salvare ca \textit{draft}), publicare cu validare, ofertare descrescătoare, închidere automată la termen și desemnarea câștigătorului;
+    \item \textbf{O2.} Ofertare \textbf{în timp real}: propagarea ofertelor și a prețului curent către toți participanții conectați, cu latență de ordinul sutelor de milisecunde, și tratarea corectă a ofertelor concurente (fără supra-scrieri sau stări inconsistente);
+    \item \textbf{O3.} Descurajarea practicii de tip \textit{sniping} (oferte depuse în ultima secundă) prin prelungirea automată a termenului limită;
+    \item \textbf{O4.} Construirea unui mecanism de \textbf{încredere} între părți: confirmarea bilaterală a livrării și primirii, recenzii reciproce cu rating agregat și un document PDF de rezumat al tranzacției generat automat;
+    \item \textbf{O5.} Notificarea multi-canal a utilizatorilor (în aplicație, în timp real, și prin email) pentru toate evenimentele relevante;
+    \item \textbf{O6.} Protejarea integrității licitațiilor active: modificarea sau ștergerea lor doar printr-un flux de aprobare supervizat de administrator, cu vizualizarea diferențelor;
+    \item \textbf{O7.} Furnizarea de \textbf{statistici agregate} per rol (economii realizate, rată de câștig, categorii dominante etc.), calculate pe datele reale ale platformei;
+    \item \textbf{O8.} Asigurarea unui nivel de securitate adecvat unei aplicații expuse public: autentificare robustă, control al accesului pe roluri, limitarea ratei cererilor și jurnalizare de audit.
+\end{enumerate}
+
+Atingerea acestor obiective oferă IMM-urilor un instrument care reduce costul achizițiilor prin competiție transparentă, comprimă durata procesului de la zile la ore și formalizează relația cumpărător--furnizor printr-un istoric verificabil.
+
+\section{Soluția propusă}
+
+Soluția propusă este \textbf{RevBid}, o platformă web de tip \textit{marketplace} cu trei roluri (cumpărător, furnizor, administrator), construită în jurul câtorva idei centrale.
+
+În primul rând, licitația este modelată ca un proces cu stări explicite (draft $\to$ activă $\to$ închisă/anulată), în care regula fundamentală este \textbf{prețul strict descrescător}: fiecare ofertă nouă trebuie să fie mai mică decât prețul curent cu cel puțin un pas minim, iar câștigătorul este deținătorul ofertei minime la momentul închiderii. Ofertarea se desfășoară \textit{live}: toți participanții aflați pe pagina licitației văd instantaneu noile oferte, prețul curent și prelungirile de termen, ceea ce reproduce presiunea concurențială a unei licitații fizice.
+
+În al doilea rând, corectitudinea competiției este tratată ca o problemă de proiectare, nu lăsată la voia întâmplării: ofertele concurente sunt arbitrate printr-o actualizare atomică de tip \textit{compare-and-set} la nivelul bazei de date (astfel încât din două oferte simultane doar una poate reuși), termenul limită se prelungește automat dacă o ofertă sosește în ultimele minute (anti-sniping), iar închiderea și notificarea finalizării sunt idempotente (nu pot fi executate de două ori, chiar la repornirea serverului).
+
+În al treilea rând, platforma nu se oprește la desemnarea câștigătorului, ci formalizează și \textbf{etapa post-licitație}, acolo unde se construiește încrederea: sistemul generează automat un document de rezumat al tranzacției, cere confirmarea livrării de către furnizor și a primirii de către cumpărător și abia apoi deblochează recenziile reciproce, care alimentează rating-ul public al fiecărui utilizator. Modificările asupra licitațiilor active trec printr-un flux de aprobare administrat, cu evidențierea diferențelor între varianta veche și cea propusă, pentru ca ofertanții existenți să nu poată fi prejudiciați.
+
+Din punct de vedere arhitectural, RevBid este o aplicație \textit{single-page} (React) care comunică cu un API REST (Node.js/Express) și primește evenimente în timp real printr-un canal WebSocket (Socket.IO), datele fiind stocate în MongoDB; detaliile și argumentele acestor alegeri sunt discutate în capitolele \ref{chap:piata} și \ref{chap:solutia}.
+
+\section{Rezultatele obținute}
+
+Rezultatul concret al proiectului este o platformă completă și funcțională, care implementează toate obiectivele enumerate: 14 modele de date, 13 module de rute REST, un canal de evenimente în timp real cu autentificare proprie, un job programat de închidere automată, generare de documente PDF cu numerotare secvențială, mesagerie privată și chat per licitație, centru de notificări cu livrare \textit{offline}, panou de administrare cu jurnal de audit și două dashboard-uri de statistici (cumpărător și furnizor) calculate prin agregări pe datele reale. Interfața --- 24 de pagini și 22 de componente reutilizabile React --- este integral în limba română.
+
+Corectitudinea funcțională a fost verificată prin scenarii end-to-end pe un set de date de test reproductibil (20 de utilizatori, 55 de licitații, sute de oferte), incluzând scenarii de concurență cu oferte simultane din sesiuni diferite, iar performanța a fost evaluată prin măsurători de latență și de încărcare, prezentate în capitolul \ref{chap:evaluare}. Față de soluțiile existente analizate în capitolul \ref{chap:piata}, RevBid acoperă o nișă neadresată --- licitații inverse în timp real pentru mediul privat, cu flux post-tranzacție și mecanism de reputație integrate --- la un cost de operare apropiat de zero.
+
+\section{Structura lucrării}
+
+Restul lucrării este organizat după cum urmează. Capitolul \ref{chap:cerinte} analizează cerințele platformei pornind de la actorii implicați și scenariile de utilizare, rezultând lista cerințelor funcționale și non-funcționale. Capitolul \ref{chap:piata} trece în revistă fundamentele licitațiilor inverse din literatura de specialitate, analizează comparativ soluțiile existente pe piață și argumentează alegerile tehnologice față de alternativele lor. Capitolul \ref{chap:solutia} prezintă arhitectura soluției: structura generală client--server, modelul de date, ciclul de viață al licitației și fluxurile principale (ofertare în timp real, finalizare, post-licitație, aprobare a modificărilor). Capitolul \ref{chap:implementare} detaliază implementarea, cu accent pe punctele dificile din punct de vedere tehnic: arbitrarea ofertelor concurente, idempotența finalizării, autentificarea canalului WebSocket, generarea PDF cu diacritice și securitatea aplicației. Capitolul \ref{chap:evaluare} evaluează platforma pe două direcții --- corectitudine funcțională față de cerințe și performanță măsurată --- și o compară cu soluțiile existente. Capitolul \ref{chap:concluzii} sintetizează concluziile și direcțiile de dezvoltare ulterioară.

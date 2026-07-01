@@ -1,0 +1,125 @@
+\chapter{Analiza cerințelor}
+\label{chap:cerinte}
+
+Acest capitol analizează cerințele platformei din perspectiva utilizatorilor vizați și a scenariilor de utilizare preconizate. Pornind de la motivația proiectului și de la actorii identificați, sunt derivate cerințele funcționale și non-funcționale care au ghidat proiectarea și pe baza cărora este evaluată soluția în capitolul \ref{chap:evaluare}.
+
+\section{Motivație și public țintă}
+
+Publicul țintă al platformei îl reprezintă \textbf{întreprinderile mici și mijlocii din mediul privat}, în dublă calitate: de \textit{cumpărători} (firme care achiziționează periodic produse sau servicii: echipamente IT, consumabile, materiale de construcții, servicii de transport, catering, mentenanță etc.) și de \textit{furnizori} (firme care vând astfel de produse/servicii și caută clienți noi fără costuri mari de vânzare).
+
+Literatura de specialitate documentează consecvent faptul că licitațiile inverse electronice produc economii de preț semnificative pentru cumpărători și lărgesc baza de furnizori, cu condiția ca produsul să fie specificabil clar și competiția să fie reală \cite{jap2002, smeltzer2003, carter2004}. În același timp, studiile atrag atenția asupra riscurilor --- presiunea exclusivă pe preț poate afecta calitatea și relația cumpărător--furnizor \cite{emiliani2000, jap2002} --- ceea ce motivează direct două decizii de proiectare ale RevBid: descrierea detaliată și imuabilă a cererii (modificările asupra licitațiilor active necesită aprobare) și mecanismul de reputație bazat pe recenzii reciproce, care contrabalansează criteriul prețului.
+
+\todoinline{Opțional, pentru întărirea acestei secțiuni: 1--2 paragrafe despre validarea cerințelor cu potențiali utilizatori reali --- de exemplu discuții/interviuri cu firme cunoscute (ce proces de achiziție au acum, ce le lipsește), sau feedback primit de la colegi/cunoscuți care au testat platforma. Menționează numărul de persoane, rolul lor și 2--3 concluzii care au influențat cerințele.}
+
+Proiectul este realizat integral de autor (frontend, backend, baza de date, integrările externe), nefiind parte a unui proiect mai amplu împărțit între mai mulți studenți.
+
+\section{Actori și scenarii de utilizare}
+
+Platforma definește trei actori, cu responsabilități distincte:
+
+\begin{itemize}
+    \item \textbf{Cumpărătorul (buyer)} --- creează licitații (le poate salva ca draft), urmărește ofertele primite în timp real, comunică cu ofertanții prin chat-ul licitației, primește documentul de finalizare, confirmă primirea produselor/serviciilor și lasă recenzii furnizorilor;
+    \item \textbf{Furnizorul (supplier)} --- explorează licitațiile active (cu filtre și căutare), depune oferte descrescătoare, este notificat când este supralicitat, confirmă livrarea în caz de câștig, lasă recenzii cumpărătorilor și își urmărește performanța în statistici;
+    \item \textbf{Administratorul (admin)} --- supervizează platforma: gestionează utilizatorii (inclusiv suspendarea conturilor), arbitrează cererile de editare/ștergere a licitațiilor active și are vizibilitate asupra jurnalului de audit.
+\end{itemize}
+
+Scenariul de utilizare central al platformei (``firul roșu'' al întregului sistem) este următorul:
+
+\begin{enumerate}
+    \item Cumpărătorul își creează cont (email + parolă cu verificare prin cod, sau cont Google), își completează datele de companie și publică o cerere: \textit{„300 de scaune de birou ergonomice, livrare în 30 de zile, buget de pornire 45\,000 RON, preț țintă 30\,000 RON''}, cu termen limită peste 7 zile și prelungire automată activată;
+    \item Furnizorii înregistrați văd licitația în lista celor active, se pot abona la ea și depun oferte; fiecare ofertă trebuie să fie mai mică decât prețul curent cu cel puțin pasul minim; toți cei conectați văd în timp real noua ofertă, prețul curent și graficul de evoluție;
+    \item Un furnizor supralicitat primește instant notificare în aplicație și email și poate reveni cu o ofertă mai bună; ofertele din ultimele 2 minute prelungesc automat termenul cu 5 minute;
+    \item La atingerea termenului, sistemul închide automat licitația, desemnează câștigătorul (oferta minimă), generează documentul PDF „Rezumat de tranzacție'' și notifică toate părțile (câștigător, cumpărător, ofertanți necâștigători, abonați);
+    \item Furnizorul livrează și confirmă livrarea în platformă; cumpărătorul confirmă primirea; ambele confirmări deblochează recenziile reciproce (1--5 stele), care actualizează rating-ul public al fiecăruia;
+    \item Ambii își consultă statisticile: cumpărătorul vede economiile realizate față de buget, furnizorul își vede rata de câștig și licitațiile pierdute la limită.
+\end{enumerate}
+
+Figura~\ref{fig:diagrama-cazuri-utilizare} sintetizează cazurile de utilizare pe actori.
+
+% ── FIGURĂ DE CREAT: diagramă de cazuri de utilizare (draw.io / PlantUML) ──
+% Sugestie de conținut: 3 actori (Cumpărător, Furnizor, Administrator) și
+% cazurile majore: creare/publicare licitație, salvare draft, ofertare,
+% abonare, chat licitație, mesagerie, confirmare livrare/primire, recenzie,
+% cerere editare/ștergere, aprobare cereri, gestionare utilizatori, statistici.
+\placeholderfig{0.95}{diagrama-cazuri-utilizare}{8.5cm}{Diagramă UML de cazuri de utilizare cu cei 3 actori (Cumpărător, Furnizor, Administrator) și cazurile de utilizare principale ale fiecăruia. Se poate realiza în draw.io sau PlantUML.}{Diagrama cazurilor de utilizare ale platformei RevBid}
+
+\section{Cerințe funcționale}
+
+Din scenariile de mai sus a fost derivată lista cerințelor funcționale, grupate pe module și sumarizate în Tabelul~\ref{tab:cerinte-functionale}. Prioritatea folosește notația MoSCoW simplificată: \textbf{M} (must have --- esențială), \textbf{S} (should have --- importantă), \textbf{C} (could have --- opțională).
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Cerințele funcționale ale platformei RevBid}
+\label{tab:cerinte-functionale}
+\begin{tabular}{l >{\raggedright\arraybackslash}p{11.2cm} c}
+\toprule
+\textbf{ID} & \textbf{Cerință} & \textbf{Prio.} \\
+\midrule
+\multicolumn{3}{l}{\textit{Conturi și autentificare}} \\
+RF-01 & Înregistrare cu email și parolă, alegerea rolului (cumpărător/furnizor) și activarea contului printr-un cod de verificare trimis pe email & M \\
+RF-02 & Autentificare alternativă cu cont Google (OAuth 2.0) & S \\
+RF-03 & Resetarea parolei printr-un link trimis pe email, cu valabilitate limitată & M \\
+RF-04 & Gestionarea profilului și a datelor de companie/fiscale (denumire legală, CUI/CIF, Registrul Comerțului, sediu social), folosite în documentele generate & M \\
+\midrule
+\multicolumn{3}{l}{\textit{Gestiunea licitațiilor}} \\
+RF-05 & Crearea unei licitații cu titlu, descriere, categorie, cantitate, buget de pornire, preț țintă (opțional), termen limită, imagini, locație pe hartă și etichete & M \\
+RF-06 & Salvarea licitației ca \textit{draft} (incomplet) și publicarea ulterioară, cu validarea completă a câmpurilor obligatorii doar la publicare & M \\
+RF-07 & Listarea, căutarea și filtrarea licitațiilor (categorie, status, text); drafturile sunt vizibile exclusiv proprietarului & M \\
+RF-08 & Editarea/ștergerea licitațiilor: directă pentru drafturi; pentru licitațiile active, doar prin cerere aprobată de administrator, cu vizualizarea diferențelor vechi/nou & M \\
+\midrule
+\multicolumn{3}{l}{\textit{Ofertare}} \\
+RF-09 & Depunerea de oferte de către furnizori, cu preț strict descrescător (cu cel puțin pasul minim sub prețul curent) și mesaj opțional & M \\
+RF-10 & Propagarea în timp real a ofertelor, a prețului curent și a istoricului către toți utilizatorii aflați pe pagina licitației & M \\
+RF-11 & Prelungirea automată a termenului limită când o ofertă sosește în ultimele minute (anti-sniping), configurabilă per licitație & S \\
+RF-12 & Istoric complet al ofertelor și grafic de evoluție a prețului & S \\
+\midrule
+\multicolumn{3}{l}{\textit{Finalizare și post-licitație}} \\
+RF-13 & Închiderea automată a licitațiilor la termen și desemnarea câștigătorului (oferta cu valoarea minimă) & M \\
+RF-14 & Generarea automată a unui document PDF „Rezumat de tranzacție'', cu numerotare secvențială și datele fiscale ale părților & S \\
+RF-15 & Confirmarea livrării de către furnizor și a primirii de către cumpărător & M \\
+RF-16 & Recenzii reciproce (1--5 stele + comentariu), deblocate doar după dubla confirmare; rating agregat afișat pe profilul public & M \\
+\midrule
+\multicolumn{3}{l}{\textit{Comunicare și notificări}} \\
+RF-17 & Notificări în aplicație, livrate în timp real, cu centru de notificări dedicat (paginare, filtre pe categorii, căutare, marcare citit/necitit) & M \\
+RF-18 & Notificări email tranzacționale (ofertă nouă, supralicitare, finalizare, confirmări, resetare parolă, termen aproape de expirare) & S \\
+RF-19 & Mesagerie privată între utilizatori (cu suport pentru imagini) și chat dedicat pe pagina fiecărei licitații (cumpărător + ofertanți) & S \\
+RF-20 & Abonarea la licitații pentru a primi notificări despre evoluția lor & S \\
+\midrule
+\multicolumn{3}{l}{\textit{Administrare și analiză}} \\
+RF-21 & Panou de administrare: gestionarea utilizatorilor (inclusiv suspendare), vizibilitate globală asupra licitațiilor, arbitrarea cererilor de editare/ștergere, jurnal de audit & M \\
+RF-22 & Statistici agregate per rol: pentru cumpărător (economii totale și procentuale, buget publicat, categorii dominante, furnizori frecvenți, trend al economiilor), pentru furnizor (rată de câștig, valoare câștigată, distribuția ofertelor, licitații pierdute la limită, distribuția rating-ului) & S \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Cerințe non-funcționale}
+
+Cerințele non-funcționale, sumarizate în Tabelul~\ref{tab:cerinte-nefunctionale}, decurg din natura aplicației: o platformă tranzacțională expusă public, cu actualizări în timp real și date cu caracter comercial. Pragurile de performanță sunt formulate ca ținte verificabile, reluate la evaluare (capitolul \ref{chap:evaluare}); recomandările OWASP pentru aplicații web \cite{owasp2021} au fost folosite ca referință pentru cerințele de securitate.
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Cerințele non-funcționale ale platformei RevBid}
+\label{tab:cerinte-nefunctionale}
+\begin{tabular}{l >{\raggedright\arraybackslash}p{4cm} >{\raggedright\arraybackslash}p{9cm}}
+\toprule
+\textbf{ID} & \textbf{Categorie} & \textbf{Cerință} \\
+\midrule
+RNF-01 & Securitate --- autentificare & Parole stocate exclusiv ca hash (bcrypt); politică de complexitate la înregistrare; token de sesiune semnat (JWT), păstrat în cookie httpOnly, inaccesibil din JavaScript \\
+RNF-02 & Securitate --- autorizare & Control al accesului pe roluri și pe proprietate (un utilizator nu poate modifica resursele altuia); drafturile sunt invizibile pentru terți \\
+RNF-03 & Securitate --- abuz & Limitarea ratei cererilor pe operațiunile sensibile (autentificare, creare licitație, mesaje, recenzii, upload) și suspendarea conturilor abuzive, inclusiv pe canalul în timp real \\
+RNF-04 & Corectitudine & Arbitrarea deterministă a ofertelor concurente (două oferte simultane nu pot fi ambele acceptate); operațiunile de finalizare sunt idempotente (re-execuția nu duplică efectele) \\
+RNF-05 & Performanță & Propagarea unei oferte către participanți în sub 1 secundă în condiții normale; răspunsuri API sub 200 ms (mediană) pentru operațiunile de listare pe setul de date de test \\
+RNF-06 & Utilizabilitate & Interfață integral în limba română, cu diacritice corecte (inclusiv în emailuri și PDF-uri); design responsive, utilizabil pe desktop și mobil \\
+RNF-07 & Confidențialitate & Datele sensibile (emailuri, identificatori fiscali) sunt mascate în jurnale; secretele aplicației provin exclusiv din variabile de mediu \\
+RNF-08 & Mentenabilitate & Cod organizat modular (modele/rute/servicii/middleware); jurnalizare structurată cu identificator de cerere și niveluri distincte (audit, securitate, eroare) \\
+RNF-09 & Scalabilitate & Interogări susținute de indexuri adecvate; liste paginate; agregările statistice nu blochează operațiunile curente \\
+RNF-10 & Compatibilitate & Funcționare în browserele moderne (Chrome, Firefox, Edge), fără plugin-uri \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Procesul de elaborare a cerințelor}
+
+Cerințele nu au fost fixate integral la început, ci au evoluat \textbf{iterativ}, pe modelul MVP (\textit{minimum viable product}) urmat de reevaluări succesive. Prima iterație a acoperit nucleul funcțional (conturi, licitații, ofertare în timp real, dashboard-uri); pe baza utilizării efective a acestui MVP au fost identificate lipsuri care au generat iterațiile următoare, reflectate și în istoricul de versiuni al proiectului: sistemul de drafturi și pagina dedicată de notificări (publicarea „totul sau nimic'' s-a dovedit nepractică pentru cereri complexe), fluxul post-licitație cu documente, confirmări și recenzii (cerință de încredere semnalată la testare), datele de companie/fiscale (necesare pentru ca documentele generate să aibă valoare practică), diacriticele complete în întreaga platformă și, în final, statisticile agregate pe roluri.
+
+\todoinline{Dacă ai obținut feedback de la utilizatori reali între iterații (colegi, cunoscuți cu firme, coordonator), descrie aici concret: cine a testat, ce a semnalat și ce cerințe au rezultat. Întărește criteriul de proces iterativ cu utilizatori.}

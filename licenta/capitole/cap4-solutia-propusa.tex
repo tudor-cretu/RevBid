@@ -1,0 +1,214 @@
+\chapter{Soluția propusă}
+\label{chap:solutia}
+
+Acest capitol prezintă arhitectura platformei RevBid: structura generală client--server, modelul de date și deciziile de modelare, ciclul de viață al licitației cu regulile sale formale, fluxurile principale ale sistemului (ofertare în timp real, finalizare, post-licitație, aprobarea modificărilor) și organizarea API-ului și a aplicației client.
+
+\section{Arhitectura generală}
+
+\subsection{Procesul de proiectare}
+
+Arhitectura a fost derivată direct din cerințe, în ordinea constrângerilor. Cerința dominantă este RF-10/RNF-05 (propagare live a ofertelor), care impune un canal persistent server$\to$client; de aici, separarea comunicației în două planuri: \textbf{REST} pentru operațiunile cerere--răspuns (CRUD licitații, conturi, liste) și \textbf{WebSocket} pentru evenimente (oferte, notificări, chat). A doua constrângere este RF-13 (închidere automată la termen): închiderea nu poate depinde de prezența vreunui utilizator, deci sistemul are nevoie de o componentă activă independentă de cereri --- un \textbf{job programat} care rulează periodic pe server. A treia constrângere este echipa de un singur dezvoltator: s-a ales un \textbf{monolit modular} (un singur proces server cu module clar separate: rute, servicii, modele, middleware), nu microservicii --- granularitatea fină ar fi adus costuri de operare și complexitate de comunicare nejustificate la această scară, fără beneficii de scalare reale.
+
+\subsection{Componentele sistemului}
+
+Sistemul rezultat, ilustrat în Figura~\ref{fig:arhitectura-generala}, are următoarele componente:
+
+\begin{itemize}
+    \item \textbf{Aplicația client} --- \textit{single-page application} React servită static (în dezvoltare de serverul Vite); comunică prin HTTPS cu API-ul REST (cereri \texttt{fetch}/axios cu cookie de autentificare) și menține o conexiune Socket.IO pentru evenimente;
+    \item \textbf{Serverul de aplicație} --- proces Node.js unic care găzduiește: API-ul REST Express (13 module de rute), serverul Socket.IO (autentificare pe handshake, camere per licitație și per utilizator), jobul programat de închidere (rulat la fiecare minut cu \texttt{node-cron}) și serviciile transversale (jurnalizare structurată, notificări, generare PDF);
+    \item \textbf{Baza de date MongoDB} --- 14 colecții cu indexuri dedicate interogărilor frecvente;
+    \item \textbf{Servicii externe} --- Cloudinary (stocarea și livrarea imaginilor prin CDN), serverul SMTP (emailuri tranzacționale) și Google OAuth (autentificare federată).
+\end{itemize}
+
+% ── FIGURĂ DE CREAT: diagrama de arhitectură (draw.io) ──
+% Sugestie: client (React SPA) la stânga; serverul Node.js în centru ca un
+% dreptunghi mare cu sub-componente: Express REST API (rute), Socket.IO
+% (camere), node-cron (auto-close), servicii (logger, notify, PDF);
+% MongoDB jos; în dreapta serviciile externe: Cloudinary, SMTP/Gmail,
+% Google OAuth. Săgeți etichetate: HTTPS/REST, WebSocket, conexiune Mongoose.
+\placeholderfig{0.97}{arhitectura-generala}{8cm}{Diagramă de arhitectură: SPA React $\leftrightarrow$ (REST + WebSocket) $\leftrightarrow$ server Node.js (Express, Socket.IO, node-cron, servicii) $\leftrightarrow$ MongoDB; servicii externe: Cloudinary, SMTP, Google OAuth. De desenat în draw.io.}{Arhitectura generală a platformei RevBid}
+
+Separarea REST/WebSocket merită subliniată ca decizie: toate \textit{mutațiile} cu efecte de difuzare (depunerea ofertei, chat-ul licitației) circulă prin canale care permit notificarea imediată a celorlalți participanți, în timp ce operațiunile clasice (creare licitație, liste, profil) rămân pe REST, unde semantica HTTP (coduri de stare, cache, idempotență) este mai potrivită \cite{fielding2000}. Serverul Express expune instanța Socket.IO către rutele REST (prin \texttt{app.set('io')}), astfel încât și o mutație REST poate emite evenimente live (de exemplu, mesajul de chat trimis prin POST este difuzat instantaneu în camera licitației).
+
+\section{Modelul de date}
+
+\subsection{Colecțiile și relațiile dintre ele}
+
+Modelul de date cuprinde 14 colecții, descrise în Tabelul~\ref{tab:colectii} și ilustrate, împreună cu relațiile dintre ele, în Figura~\ref{fig:diagrama-bd}.
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Colecțiile bazei de date și rolul lor}
+\label{tab:colectii}
+\begin{tabular}{l >{\raggedright\arraybackslash}p{11.4cm}}
+\toprule
+\textbf{Colecție} & \textbf{Rol și câmpuri esențiale} \\
+\midrule
+User & Cont și profil: nume, email (unic), hash parolă (null pentru conturile Google), rol (\texttt{buyer}/\texttt{supplier}/\texttt{admin}), date de companie (sub-document: denumire legală, CUI/CIF, Reg.\ Com., sediu), rating agregat și număr de recenzii (cache), stare (verificat/suspendat), câmpuri de verificare email și resetare parolă \\
+Auction & Cererea de achiziție: referință la cumpărător, titlu, descriere, categorie, cantitate, etichete, imagini, locație (coordonate + adresă), buget de pornire, preț curent, preț țintă (opțional), stare (\texttt{draft}/\texttt{active}/\texttt{closed}/\texttt{cancelled}), termen limită, prelungire automată, referință la oferta câștigătoare, indicatori idempotenți de finalizare \\
+Bid & Oferta unui furnizor: referințe la licitație și furnizor, sumă, mesaj opțional, indicator \texttt{isWinning} (cea mai bună ofertă curentă) \\
+Subscription & Abonarea unui utilizator la o licitație (pereche utilizator--licitație), pentru notificări \\
+Notification & Notificare in-app: destinatar, tip, text, link, stare citit/necitit \\
+Conversation, Message & Mesageria privată: conversații 1-la-1 și mesajele lor (text + imagini) \\
+AuctionChat & Mesajele chat-ului public al unei licitații (cumpărător + ofertanți) \\
+AuctionRequest & Cerere de modificare/ștergere a unei licitații active: tip (\texttt{edit}/\texttt{delete}), stare (\texttt{pending}/\texttt{approved}/\texttt{rejected}/\texttt{cancelled}), instantanee ale datelor curente și propuse (pentru afișarea diferențelor), motivul cumpărătorului, nota administratorului, cine/când a arbitrat \\
+Invoice & Rezumatul tranzacției: număr secvențial unic, referințe, \textit{snapshot} al datelor tranzacției și al datelor fiscale ale ambelor părți (stabil în timp), stare, marcaje de trimitere pe email \\
+AuctionCompletion & Fluxul post-licitație: confirmarea livrării (furnizor) și a primirii (cumpărător) cu momentele aferente, momentul deblocării recenziilor și al încheierii colaborării \\
+Review & Recenzie reciprocă: licitație, autor, destinatar, rolurile lor, rating 1--5, comentariu, câmpuri de moderare (ascundere) \\
+Counter & Secvențe numerice atomice (numerotarea documentelor per an) \\
+AdminAuditLog & Jurnalul acțiunilor administrative \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ── FIGURĂ DE CREAT: diagrama colecțiilor / entitate-relație (draw.io) ──
+% Sugestie: dreptunghiuri pentru colecții cu câmpurile principale; săgeți
+% pentru referințe: Auction→User (buyer), Bid→Auction, Bid→User (supplier),
+% Auction→Bid (winningBid), Invoice→{Auction,User,User,Bid},
+% AuctionCompletion→{Auction,User,User,Bid}, Review→{Auction,User,User},
+% AuctionRequest→{Auction,User}, Subscription→{User,Auction},
+% Notification→User, AuctionChat→{Auction,User}, Message→Conversation→User.
+% Evidențiază sub-documentul company înglobat în User.
+\placeholderfig{0.97}{diagrama-bd}{9cm}{Diagrama colecțiilor MongoDB și a referințelor dintre ele (echivalent entitate-relație). Evidențiază: company înglobat în User; snapshot-urile din Invoice; perechea unică (auction, reviewer) din Review.}{Modelul de date al platformei --- colecții și relații}
+
+\subsection{Decizii de modelare}
+
+\textbf{Referențiere vs.\ înglobare.} Relațiile cu cardinalitate mare sau cu acces independent (oferte, recenzii, notificări) sunt modelate prin \textit{referințe} (ObjectId) și colecții separate --- o licitație poate avea sute de oferte, iar acestea sunt interogate și agregat independent. În schimb, datele dependente 1:1 sunt \textit{înglobate}: datele de companie trăiesc în documentul utilizatorului, eliminând un join la fiecare afișare de profil.
+
+\textbf{Șablonul snapshot.} Documentul de tranzacție (Invoice) nu referențiază pur și simplu licitația și utilizatorii, ci \textit{copiază} la generare toate datele relevante (titlu, sumă, denumiri legale, date fiscale). Un document emis trebuie să rămână identic în timp, chiar dacă firma își schimbă ulterior sediul sau numele --- aceeași rațiune pentru care o factură clasică nu se modifică retroactiv.
+
+\textbf{Stare derivată memorată (cache).} Rating-ul mediu și numărul de recenzii sunt stocate denormalizat pe utilizator și recalculate la fiecare recenzie nouă printr-o agregare. Alternativa --- calcularea la fiecare afișare --- ar fi însemnat o agregare pe colecția de recenzii la fiecare încărcare de profil sau listă de oferte.
+
+\textbf{Câmpul \texttt{currentPrice}.} Prețul curent al licitației este ținut pe documentul licitației (nu derivat din minimul ofertelor) tocmai pentru a servi drept \textit{punct unic de arbitraj} al ofertelor concurente, printr-o actualizare condiționată atomică (secțiunea \ref{sec:flux-ofertare}).
+
+\textbf{Indexuri.} Fiecare interogare frecventă are un index dedicat, declarat în schemă: (status, deadline) pentru jobul de închidere; (buyer, status, createdAt) pentru „licitațiile mele''; (category, status) pentru navigarea pe categorii; (auction, amount) pentru oferta minimă; (supplier, createdAt) pentru istoricul furnizorului; (auction, reviewer) --- \textit{unic} --- pentru a garanta o singură recenzie per parte per licitație; (user, read) pentru notificările necitite.
+
+\section{Ciclul de viață al licitației}
+\label{sec:ciclu-viata}
+
+Licitația este modelată ca un automat cu patru stări --- \texttt{draft}, \texttt{active}, \texttt{closed}, \texttt{cancelled} --- ilustrat în Figura~\ref{fig:stari-licitatie}.
+
+% ── FIGURĂ DE CREAT: diagrama de stări (draw.io) ──
+% Sugestie: stări: draft → active (publicare, cu validare completă);
+% draft → (ștearsă definitiv); active → closed (deadline atins, job automat);
+% active → cancelled (anulare buyer/admin sau cerere de ștergere aprobată);
+% după closed: bandă orizontală cu fluxul post-licitație:
+% generare invoice → confirmare livrare (furnizor) → confirmare primire
+% (cumpărător) → recenzii deblocate → colaborare încheiată.
+\placeholderfig{0.95}{stari-licitatie}{7cm}{Diagrama de stări a licitației (draft, active, closed, cancelled) cu tranzițiile și condițiile lor, plus fluxul post-licitație după starea closed (invoice $\to$ confirmări bilaterale $\to$ recenzii).}{Ciclul de viață al unei licitații în RevBid}
+
+\textbf{Starea draft.} O licitație poate fi salvată oricând, cu orice subset de câmpuri --- validarea completă se aplică doar la \textbf{publicare} (tranziția draft $\to$ active), care cere: titlu, descriere, categorie, cantitate, buget de pornire strict pozitiv și plauzibil, termen limită între 5 minute și 1 an de la momentul publicării. Drafturile sunt private (vizibile doar proprietarului și administratorului) și pot fi șterse definitiv; licitațiile publicate nu se șterg niciodată fizic, ci se \textit{anulează} (păstrând istoricul ofertanților).
+
+\textbf{Starea active.} La publicare, prețul curent este inițializat cu bugetul de pornire, iar cumpărătorul este abonat automat la propria licitație. Pe durata stării active se aplică regula fundamentală a ofertării: o ofertă nouă $b_{\text{nou}}$ este validă doar dacă scade prețul curent $p_{\text{curent}}$ cu cel puțin pasul minim $\Delta_{\min}$ (1 RON în configurația curentă):
+
+\begin{equation}
+\label{eq:regula-oferta}
+b_{\text{nou}} \leq p_{\text{curent}} - \Delta_{\min}
+\end{equation}
+
+după care prețul curent devine $p_{\text{curent}} \gets b_{\text{nou}}$. Pasul minim previne ofertele simbolice (scăderi de 0,01 RON) care ar produce zgomot fără competiție reală.
+
+\textbf{Prelungirea automată (anti-sniping).} Dacă licitația are opțiunea activată și o ofertă validă sosește la momentul $t$ cu mai puțin de $T_{\text{prag}} = 2$ minute înaintea termenului $t_{\text{deadline}}$, termenul se prelungește:
+
+\begin{equation}
+\label{eq:autoextend}
+t_{\text{deadline}} - t < T_{\text{prag}} \;\Rightarrow\; t_{\text{deadline}} \gets t + T_{\text{ext}}, \quad T_{\text{ext}} = 5 \text{ minute}
+\end{equation}
+
+Mecanismul elimină strategia ofertei depuse în ultima secundă (care ar priva ceilalți participanți de șansa de a răspunde) și garantează că licitația se închide doar după ce nimeni nu mai dorește să îmbunătățească prețul --- comportament aliniat cu proprietățile licitației engleze deschise \cite{mcafee1987}.
+
+\textbf{Starea closed.} Un job programat rulează la fiecare minut și închide licitațiile active al căror termen a expirat, desemnând câștigătorul conform ecuației (\ref{eq:castigator}) și declanșând fluxul de finalizare (secțiunea \ref{sec:flux-finalizare}). Tot jobul trimite și alertele „termenul expiră în curând'' (cu o oră înainte) furnizorilor care au ofertat.
+
+\section{Fluxul de ofertare în timp real}
+\label{sec:flux-ofertare}
+
+Fluxul de ofertare, ilustrat în Figura~\ref{fig:flux-ofertare}, este nucleul platformei. La deschiderea paginii unei licitații, clientul stabilește conexiunea Socket.IO (autentificată cu tokenul JWT la handshake) și intră în \textit{camera} licitației. Depunerea unei oferte parcurge pașii:
+
+\begin{enumerate}
+    \item clientul emite evenimentul \texttt{place\_bid} cu identificatorul licitației, suma și un mesaj opțional, primind răspunsul printr-un \textit{callback de confirmare};
+    \item serverul validează cererea în trepte: format și limite ale sumei, rolul emitentului (doar furnizorii ofertează, nu și la propria licitație), starea licitației (activă) și regula de preț (\ref{eq:regula-oferta});
+    \item serverul aplică \textbf{actualizarea atomică} a prețului curent --- o operație condiționată de tip \textit{compare-and-set} care reușește doar dacă prețul curent mai satisface condiția în momentul scrierii; dintre două oferte concurente, exact una reușește, cealaltă fiind respinsă cu un mesaj care indică noul preț maxim admis (detaliile de implementare și demonstrația de corectitudine, în capitolul \ref{chap:implementare});
+    \item oferta este înregistrată (și marcată drept câștigătoare curentă), termenul se prelungește dacă este cazul (\ref{eq:autoextend}), iar furnizorul este abonat automat la licitație;
+    \item serverul difuzează în camera licitației evenimentele \texttt{new\_bid} (cu oferta și noul preț) și, dacă e cazul, \texttt{deadline\_extended}; toți participanții văd instantaneu actualizarea;
+    \item furnizorul supralicitat primește notificare personală (in-app + email), iar abonații licitației sunt notificați, cu deduplicare (emitentul și supralicitatul nu primesc dubluri).
+\end{enumerate}
+
+% ── FIGURĂ DE CREAT: diagramă de secvență (draw.io / PlantUML) ──
+% Sugestie: participanți: Furnizor A (client), Furnizor B (client),
+% Server (Socket.IO), MongoDB. A emite place_bid → validări → findOneAndUpdate
+% condiționat (compare-and-set) → creare Bid → broadcast new_bid către cameră
+% (A și B) → notificare outbid către fostul lider. Include și cazul de eșec:
+% B emite simultan, update-ul lui găsește condiția falsă → eroare cu noul max.
+\placeholderfig{0.97}{flux-ofertare}{9cm}{Diagramă de secvență a depunerii unei oferte: validări, actualizare atomică condiționată în MongoDB, difuzare \texttt{new\_bid} în camera licitației, notificarea supralicitatului; inclusiv cazul a două oferte simultane (una reușește, una primește eroare).}{Fluxul de ofertare în timp real, inclusiv arbitrarea ofertelor concurente}
+
+\section{Fluxul de finalizare și post-licitație}
+\label{sec:flux-finalizare}
+
+\textbf{Finalizarea} este declanșată de jobul de închidere și este proiectată \textbf{idempotent}: un indicator atomic pe documentul licitației garantează că notificările și documentul de tranzacție sunt generate o singură dată, chiar dacă jobul s-ar suprapune sau serverul ar reporni în timpul procesării. Secvența: determinarea câștigătorului, generarea documentului „Rezumat de tranzacție'' (număr secvențial per an, obținut atomic din colecția Counter; instantanee ale datelor fiscale ale ambelor părți; PDF atașat emailurilor), apoi notificarea pe niveluri de prioritate cu deduplicare: câștigătorul, cumpărătorul, furnizorii necâștigători (fiecare cu propria cea mai bună ofertă în text) și abonații care nu au ofertat. Utilizatorii aflați în acel moment pe pagina licitației primesc și un eveniment live (\texttt{auction\_finalized}) care afișează instantaneu rezultatul.
+
+\textbf{Post-licitație}, încrederea dintre părți este formalizată în trei trepte, vizibile în Figura~\ref{fig:stari-licitatie}: (i) furnizorul confirmă livrarea; (ii) cumpărătorul confirmă primirea; (iii) abia după \textbf{ambele} confirmări se deblochează recenziile reciproce --- regulă care împiedică recenziile „preventive'' depuse înaintea prestației. Fiecare parte poate lăsa o singură recenzie per licitație (constrângere de unicitate în baza de date), cu rating întreg 1--5 și comentariu limitat. La fiecare recenzie nouă, rating-ul agregat al destinatarului este recalculat:
+
+\begin{equation}
+\label{eq:rating}
+R_u = \frac{1}{|V_u|} \sum_{r \in V_u} \mathrm{rating}(r)
+\end{equation}
+
+unde $V_u$ este mulțimea recenziilor vizibile (ne-ascunse de moderare) primite de utilizatorul $u$; $R_u$ și $|V_u|$ sunt memorate pe profil și afișate public.
+
+\section{Fluxul de aprobare a modificărilor}
+
+O licitație activă nu poate fi modificată sau ștearsă unilateral de cumpărător: furnizorii au ofertat pe baza specificațiilor publicate, iar alterarea lor le-ar invalida ofertele --- exact riscul de proces incorect semnalat în literatură \cite{jap2002}. RevBid introduce de aceea un \textbf{flux de aprobare}: cumpărătorul depune o \textit{cerere} de editare (cu noile valori) sau de ștergere (cu motiv), iar cererea înregistrează automat două instantanee --- datele \textit{curente} și cele \textit{propuse}. Administratorul vede diferențele câmp cu câmp (vechi/nou), aprobă sau respinge (cu notă explicativă), iar decizia este aplicată automat și notificată cumpărătorului; cererile pot fi și retrase. Întreaga activitate administrativă este consemnată în jurnalul de audit.
+
+\section{Arhitectura API-ului și a evenimentelor}
+
+API-ul REST este organizat pe resurse \cite{fielding2000}, sub prefixul \texttt{/api}; Tabelul~\ref{tab:module-api} prezintă modulele și responsabilitățile lor, iar Tabelul~\ref{tab:evenimente-socket} --- contractul de evenimente al canalului în timp real.
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Modulele API-ului REST}
+\label{tab:module-api}
+\begin{tabular}{l >{\raggedright\arraybackslash}p{10.6cm}}
+\toprule
+\textbf{Prefix} & \textbf{Responsabilitate} \\
+\midrule
+\texttt{/api/auth} & Înregistrare, verificare email, autentificare (inclusiv Google OAuth), sesiunea curentă, resetare parolă, setări cont și date de companie \\
+\texttt{/api/auctions} & Creare (draft sau publicare directă), listare cu filtre, detaliu, editare, publicare draft, anulare/ștergere, chat-ul licitației \\
+\texttt{/api/bids} & Listarea ofertelor unei licitații, ofertele utilizatorului curent \\
+\texttt{/api/auction-requests} & Cererile de editare/ștergere și arbitrarea lor de către administrator \\
+\texttt{/api/upload} & Încărcarea imaginilor (licitații, avatar) către Cloudinary \\
+\texttt{/api/invoices} & Listarea documentelor de tranzacție și descărcarea PDF-urilor \\
+\texttt{/api/notifications} & Centrul de notificări: listare paginată, filtre, citit/necitit \\
+\texttt{/api/messages} & Conversațiile și mesajele private \\
+\texttt{/api/subscriptions} & Abonarea/dezabonarea de la licitații \\
+\texttt{/api/support} & Mesajele către echipa de suport \\
+\texttt{/api/admin} & Operațiuni administrative (utilizatori, suspendări, audit) \\
+\texttt{/api/statistici} & Statisticile agregate (\texttt{/cumparator}, \texttt{/furnizor}) \\
+\texttt{/api} (recenzii) & Starea fluxului post-licitație, confirmările de livrare/primire, recenziile și rezumatul de rating al unui utilizator \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Contractul de evenimente Socket.IO}
+\label{tab:evenimente-socket}
+\begin{tabular}{l l >{\raggedright\arraybackslash}p{7.6cm}}
+\toprule
+\textbf{Eveniment} & \textbf{Direcție} & \textbf{Semnificație} \\
+\midrule
+\texttt{join\_auction} / \texttt{leave\_auction} & client $\to$ server & Intrarea/ieșirea din camera unei licitații \\
+\texttt{place\_bid} & client $\to$ server & Depunerea unei oferte; răspuns sincron prin callback (succes cu oferta creată sau eroare cu motivul) \\
+\texttt{new\_bid} & server $\to$ cameră & Ofertă nouă acceptată: oferta populată și noul preț curent \\
+\texttt{deadline\_extended} & server $\to$ cameră & Termen prelungit automat; noul termen \\
+\texttt{auction\_finalized} & server $\to$ cameră & Licitație finalizată: câștigător, preț final, disponibilitatea documentului \\
+\texttt{auction\_chat} & server $\to$ cameră & Mesaj nou în chat-ul licitației \\
+\texttt{notification} & server $\to$ utilizator & Notificare personală (cameră dedicată per utilizator); la conectare se livrează și notificările necitite acumulate offline \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Arhitectura aplicației client}
+
+Aplicația client este organizată pe trei straturi: \textbf{pagini} (24 de rute --- autentificare, dashboard-uri pe rol, creare/editare licitație, detaliul licitației, ofertele mele, notificări, mesagerie, profil public, setări, statistici, panou admin), \textbf{componente reutilizabile} (22 --- card de licitație, grafic de preț, hartă, chat, modale de recenzie și finalizare, bară de navigare cu clopoțel de notificări etc.) și \textbf{context global} (starea de autentificare).
+
+Sesiunea este restaurată la încărcare printr-un apel către \texttt{/api/auth/me} pe baza cookie-ului httpOnly --- tokenul nu este niciodată stocat în \texttt{localStorage}, eliminând expunerea la XSS; în memorie se păstrează doar o copie tranzitorie pentru handshake-ul Socket.IO. Rutele protejate sunt împachetate într-o componentă \texttt{ProtectedRoute} care redirecționează utilizatorii neautentificați, iar rutele de statistici aleg automat dashboard-ul potrivit rolului. Paginile cu conținut live (detaliul licitației, bara de navigare, mesageria) își gestionează propriul ciclu de viață al conexiunii socket: intrare în cameră la montare, părăsire și curățarea ascultătorilor la demontare --- detalii în capitolul \ref{chap:implementare}.

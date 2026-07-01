@@ -1,0 +1,18 @@
+Acest folder trebuie să conțină imaginile lucrării.
+
+OBLIGATORIU (din template-ul oficial de diplomă):
+  - upb-logo.jpg
+  - cs-logo.pdf
+
+Restul fișierelor așteptate (24 — lista completă, cu descrieri, în
+../README-LICENTA.md):
+  diagrama-cazuri-utilizare.png, arhitectura-generala.png, diagrama-bd.png,
+  stari-licitatie.png, flux-ofertare.png, npm-trends.png,
+  ss-detaliu-licitatie.png, ss-creare-licitatie.png, ss-notificari.png,
+  ss-landing.png, ss-autentificare.png, ss-dashboard-cumparator.png,
+  ss-dashboard-furnizor.png, ss-ofertele-mele.png, ss-mesagerie.png,
+  ss-profil-public.png, ss-setari-companie.png, ss-admin-utilizatori.png,
+  ss-admin-diff.png, ss-pdf-rezumat.png, ss-statistici-cumparator.png,
+  ss-statistici-furnizor.png, grafic-latente.png, ss-lighthouse.png
+
+Documentul compilează și fără ele (apar casete roșii placeholder).

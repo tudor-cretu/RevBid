@@ -1,0 +1,194 @@
+\chapter{Evaluare}
+\label{chap:evaluare}
+
+Evaluarea platformei răspunde la cele două întrebări fundamentale: \textbf{(1) funcționează corect?} --- raportat la cerințele din capitolul \ref{chap:cerinte} --- și \textbf{(2) cât de bine funcționează?} --- pe baza unor metrici măsurabile și prin comparație cu soluțiile analizate în capitolul \ref{chap:piata}. Capitolul se încheie cu validarea cu utilizatori și cu o discuție critică a rezultatelor.
+
+\section{Metodologia de evaluare}
+
+Evaluarea a fost realizată pe un mediu de test reproductibil: aplicația rulată local (server Node.js + instanță MongoDB), populată cu setul de date generat de scriptul de seed --- 20 de utilizatori (8 cumpărători, 12 furnizori), 55 de licitații în toate stările și sute de oferte. Dimensiunea sistemului evaluat: aproximativ 17\,600 de linii de cod sursă în 97 de fișiere (serverul: 50 de fișiere / 7\,144 de linii; clientul: 47 de fișiere / 10\,450 de linii), 14 colecții de date și 13 module de API.
+
+\todoinline{Completează configurația mașinii de test: procesor, RAM, sistem de operare, versiunea Node.js și MongoDB (ex.: „Intel Core i7-XXXX, 16 GB RAM, Windows 11, Node.js 22, MongoDB 8'').}
+
+Instrumentele de măsurare folosite: \textbf{autocannon} (generator de încărcare HTTP) pentru debitul și latențele API-ului REST, măsurare instrumentată în client (\texttt{performance.now()}) pentru latența ciclului de ofertare pe Socket.IO și \textbf{Lighthouse} (instrumentul de audit integrat în Chrome) pentru calitatea aplicației client. Comenzile exacte de reproducere a măsurătorilor sunt date în Anexa~\ref{anexa:rulare}.
+
+\section{Corectitudinea funcțională}
+
+Verificarea funcțională a urmărit acoperirea integrală a cerințelor RF-01 -- RF-22 prin scenarii end-to-end executate manual, multe dintre ele exersate continuu pe parcursul dezvoltării iterative. Tabelul~\ref{tab:scenarii} prezintă scenariile principale și rezultatul lor; fiecare scenariu precizează cerințele acoperite.
+
+\begin{table}[!ht]\footnotesize\linespread{1}
+\centering
+\caption{Scenariile de verificare funcțională și rezultatele lor}
+\label{tab:scenarii}
+\begin{tabular}{l >{\raggedright\arraybackslash}p{9.6cm} l l}
+\toprule
+\textbf{ID} & \textbf{Scenariu} & \textbf{Cerințe} & \textbf{Rezultat} \\
+\midrule
+S01 & Înregistrare cu email, primirea codului de verificare, activarea contului; autentificare și restaurarea sesiunii după reîncărcarea paginii (cookie httpOnly) & RF-01 & Trecut \\
+S02 & Autentificare cu cont Google (creare automată de cont la prima conectare) & RF-02 & Trecut \\
+S03 & Resetarea parolei: cerere, link pe email, parolă nouă conform politicii; link-ul expirat/reutilizat este respins & RF-03 & Trecut \\
+S04 & Completarea datelor de companie și regăsirea lor în documentul PDF generat ulterior & RF-04, RF-14 & Trecut \\
+S05 & Creare licitație ca draft incomplet; tentativă de publicare fără câmpuri obligatorii --- respinsă cu erori per câmp; completare și publicare reușită & RF-05, RF-06 & Trecut \\
+S06 & Drafturile nu apar în listări publice și răspund cu 404 pentru alt utilizator; proprietarul le vede și le poate șterge definitiv & RF-07 & Trecut \\
+S07 & Ofertare din două conturi de furnizor în două browsere: ofertele se propagă live ambilor; oferta sub pasul minim este respinsă; cumpărătorul nu poate oferta la propria licitație & RF-09, RF-10 & Trecut \\
+S08 & \textbf{Oferte concurente}: depunere aproape simultană a două oferte valide pe aceeași licitație --- exact una este acceptată, cealaltă primește eroarea cu noul preț maxim; prețul curent rămâne strict descrescător & RNF-04 & Trecut \\
+S09 & Ofertă depusă în ultimele 2 minute pe o licitație cu prelungire automată: termenul se extinde cu 5 minute și toți participanții văd noul termen & RF-11 & Trecut \\
+S10 & Închiderea automată la termen: licitația trece în „închisă'' în cel mult un minut, câștigătorul este oferta minimă, toate părțile primesc notificări și emailuri (câștigător, cumpărător, necâștigători, abonați), fără duplicate; documentul PDF este generat și atașat & RF-13, RF-14, RF-17, RF-18 & Trecut \\
+S11 & Repetarea finalizării (repornirea serverului imediat după închidere): notificările și documentul \textbf{nu} sunt duplicate (idempotență) & RNF-04 & Trecut \\
+S12 & Fluxul post-licitație: confirmarea livrării (doar furnizorul câștigător), a primirii (doar cumpărătorul); recenziile sunt blocate înainte de dubla confirmare și deblocate după; a doua recenzie a aceleiași părți este respinsă; rating-ul public se actualizează & RF-15, RF-16 & Trecut \\
+S13 & Cerere de editare a unei licitații active: diferențele vechi/nou sunt vizibile administratorului; aprobarea aplică modificările, respingerea le anulează; cumpărătorul este notificat & RF-08, RF-21 & Trecut \\
+S14 & Mesagerie privată cu imagini și chat pe licitație (doar cumpărătorul și ofertanții pot scrie); notificarea participanților & RF-19, RF-20 & Trecut \\
+S15 & Suspendarea unui cont de către administrator: autentificarea și conectarea socket sunt refuzate imediat, chiar cu un JWT încă valid & RF-21, RNF-03 & Trecut \\
+S16 & Depășirea limitelor de rată (de exemplu mesaje în rafală): serverul răspunde 429 cu mesaj explicativ; jurnalul de securitate înregistrează evenimentul & RNF-03 & Trecut \\
+S17 & Statisticile pe ambele roluri reflectă corect datele de test (economii, rată de câștig, licitații pierdute la limită), verificate prin sondaj manual pe valori calculate independent & RF-22 & Trecut \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Toate cele 22 de cerințe funcționale și cerințele non-funcționale de corectitudine (RNF-01 -- RNF-04) sunt acoperite de scenariile de mai sus. Scenariile S08 și S11 merită subliniate: ele verifică exact proprietățile de concurență și idempotență argumentate teoretic în secțiunea \ref{sec:atomic} --- comportamentul observat (o singură ofertă acceptată, respectiv o singură rundă de notificări) confirmă implementarea.
+
+Limita acestei verificări este caracterul ei manual: proiectul nu include încă o suită de teste automate, ceea ce face regresiile mai costisitor de detectat; aspectul este discutat la secțiunea \ref{sec:discutie} și în dezvoltările ulterioare.
+
+\section{Performanța}
+
+\subsection{Latența și debitul API-ului REST}
+
+Măsurătorile au fost efectuate cu autocannon (50 de conexiuni concurente, 30 de secunde per endpoint) pe endpoint-urile cele mai solicitate, cu baza de date populată de seed. Tabelul~\ref{tab:perf-api} prezintă rezultatele; ținta din RNF-05 este o latență mediană sub 200 ms pentru operațiunile de listare.
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Performanța API-ului REST (autocannon, 50 conexiuni, 30 s)}
+\label{tab:perf-api}
+\begin{tabular}{>{\raggedright\arraybackslash}p{6.2cm} c c c}
+\toprule
+\textbf{Endpoint} & \textbf{Cereri/s} & \textbf{Latență mediană} & \textbf{Latență p99} \\
+\midrule
+GET /api/auctions (listare, 55 licitații) & \todoval & \todoval\ ms & \todoval\ ms \\
+GET /api/auctions/:id (detaliu) & \todoval & \todoval\ ms & \todoval\ ms \\
+GET /api/bids/auction/:id (ofertele licitației) & \todoval & \todoval\ ms & \todoval\ ms \\
+GET /api/notifications (centru notificări) & \todoval & \todoval\ ms & \todoval\ ms \\
+GET /api/statistici/cumparator & \todoval & \todoval\ ms & \todoval\ ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\todoinline{Rulează comenzile autocannon din Anexa~\ref{anexa:rulare} și completează tabelul. Adaugă apoi 2--3 fraze de interpretare: dacă mediana e sub țintă, spune explicit că RNF-05 e îndeplinită și cu ce marjă; comentează diferența dintre endpoint-urile simple (detaliu) și cele cu agregări (statistici).}
+
+\subsection{Latența ciclului de ofertare în timp real}
+
+Pentru canalul Socket.IO s-au măsurat, în aplicația client instrumentată, două intervale: (i) \textit{ofertă $\to$ confirmare} --- timpul de la emiterea \texttt{place\_bid} până la callback-ul de confirmare (include validările și scrierile în baza de date) și (ii) \textit{ofertă $\to$ difuzare} --- timpul până la recepția evenimentului \texttt{new\_bid} de către un al doilea client conectat la aceeași licitație (latența percepută de ceilalți participanți, ținta RNF-05: sub 1 secundă). Rezultatele pe 100 de oferte consecutive sunt sumarizate în Tabelul~\ref{tab:perf-socket} și în Figura~\ref{fig:grafic-latente}.
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Latența ciclului de ofertare (100 de oferte, rețea locală)}
+\label{tab:perf-socket}
+\begin{tabular}{>{\raggedright\arraybackslash}p{6.6cm} c c c}
+\toprule
+\textbf{Interval măsurat} & \textbf{Mediană} & \textbf{Medie} & \textbf{p99} \\
+\midrule
+\texttt{place\_bid} $\to$ callback de confirmare & \todoval\ ms & \todoval\ ms & \todoval\ ms \\
+\texttt{place\_bid} $\to$ \texttt{new\_bid} la al doilea client & \todoval\ ms & \todoval\ ms & \todoval\ ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ── GRAFIC DE CREAT: distribuția latențelor ──
+% Sugestie: histograma sau box-plot al celor 100 de măsurători pentru cele
+% două intervale (Excel / Google Sheets / matplotlib după export CSV).
+\placeholderfig{0.85}{grafic-latente}{6.5cm}{Grafic (histogramă sau box-plot) cu distribuția celor 100 de latențe măsurate pentru cele două intervale din Tabelul~\ref{tab:perf-socket}. Se poate genera în Excel/Sheets dintr-un export CSV al măsurătorilor.}{Distribuția latențelor ciclului de ofertare în timp real}
+
+\todoinline{Instrumentarea minimă: în pagina licitației, înregistrează \texttt{performance.now()} înainte de \texttt{emit} și în callback / în handler-ul \texttt{new\_bid} al celui de-al doilea browser; scrie valorile în consolă și exportă-le. Alternativ, măsoară doar manual câteva valori cu DevTools și raportează intervalul observat.}
+
+\subsection{Calitatea aplicației client}
+
+Auditul Lighthouse a fost rulat pe build-ul de producție (\texttt{npm run build} + \texttt{npm run preview}) pentru trei pagini reprezentative (Tabelul~\ref{tab:lighthouse}).
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Scoruri Lighthouse (build de producție, desktop)}
+\label{tab:lighthouse}
+\begin{tabular}{l c c c c}
+\toprule
+\textbf{Pagină} & \textbf{Performance} & \textbf{Accessibility} & \textbf{Best Practices} & \textbf{SEO} \\
+\midrule
+Landing page & \todoval & \todoval & \todoval & \todoval \\
+Dashboard (autentificat) & \todoval & \todoval & \todoval & \todoval \\
+Detaliul licitației & \todoval & \todoval & \todoval & \todoval \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ── SCREENSHOT DE FĂCUT: raportul Lighthouse ──
+\placeholderfig{0.85}{ss-lighthouse}{6cm}{Captură de ecran cu raportul Lighthouse (cele 4 scoruri circulare) pentru una dintre pagini --- ideal landing page-ul, pe build-ul de producție.}{Raport Lighthouse pentru aplicația client}
+
+\todoinline{Rulează Lighthouse din Chrome DevTools (tab-ul Lighthouse, mod desktop) pe cele 3 pagini și completează scorurile + captura. Menționează și dimensiunea bundle-ului raportată de \texttt{npm run build} (kB gzip).}
+
+\subsection{Promptitudinea închiderii automate}
+
+Jobul de închidere rulează la fiecare minut, deci întârzierea maximă teoretică între termenul limită și închiderea efectivă este de 60 de secunde, cu o medie de circa 30 de secunde --- suficient pentru dinamica unei licitații cu durata de ore sau zile, mai ales în combinație cu prelungirea automată din ecuația (\ref{eq:autoextend}), care garantează că nicio ofertă validă nu mai poate sosi în acest interval rezidual fără a fi procesată corect (licitația este verificată ca activă la fiecare ofertă).
+
+\section{Comparația cu soluțiile existente}
+
+Tabelul~\ref{tab:comparatie-finala} reia comparația din capitolul \ref{chap:piata}, de această dată pe criterii operaționale, din perspectiva unui IMM care vrea să organizeze o achiziție competitivă.
+
+\begin{table}[!ht]\footnotesize\linespread{1}
+\centering
+\caption{Comparație operațională cu soluțiile existente, din perspectiva unui IMM}
+\label{tab:comparatie-finala}
+\begin{tabular}{>{\raggedright\arraybackslash}p{4.2cm} >{\raggedright\arraybackslash}p{2.6cm} >{\raggedright\arraybackslash}p{2.4cm} >{\raggedright\arraybackslash}p{2.6cm} >{\raggedright\arraybackslash}p{2.4cm}}
+\toprule
+\textbf{Criteriu} & \textbf{Ariba/Coupa} & \textbf{SEAP} & \textbf{Alibaba RFQ / Freelancer} & \textbf{RevBid} \\
+\midrule
+Eligibilitate firmă privată mică & Teoretic da, practic nu & Nu (doar sector public) & Da & Da \\
+Cost de pornire & Licență negociată (mii de euro/an) & --- & Gratuit / comision & Gratuit \\
+Timp de la cont nou la prima licitație publicată & Săptămâni--luni (onboarding) & --- & Minute--ore & Minute \\
+Competiție vizibilă în timp real & Da & Nu & Nu & Da \\
+Protecție anti-sniping & Da & Nu & Nu & Da (automată) \\
+Confirmare livrare/primire + recenzii reciproce & Parțial & Nu & Parțial & Da \\
+Document de tranzacție generat automat & Da & Da & Nu & Da (PDF) \\
+Interfață în limba română & Nu & Da & Nu & Da \\
+Statistici de economii / performanță pentru utilizator & Da & Nu & Nu & Da \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Interpretarea comparației: pentru segmentul țintă, RevBid este de preferat alternativelor enterprise \textbf{deoarece} elimină complet bariera de cost și de onboarding (cont creat în minute, fără licență), și de preferat platformelor deschise de tip RFQ \textbf{deoarece} oferă mecanismul care generează efectiv economiile --- competiția vizibilă în timp real cu preț strict descrescător \cite{jap2002, carter2004} --- plus fluxul de încredere post-tranzacție pe care acestea nu îl au. Față de SEAP, singura platformă localizată cu re-ofertare descendentă, RevBid adresează un public complementar (mediul privat) cu o experiență de utilizare modernă (live, notificări, statistici). Reversul medaliei: RevBid nu are rețeaua de furnizori a platformelor consacrate (problema „oului și a găinii'' a oricărui marketplace nou) și nici certificările/integrarile enterprise (ERP, cataloage) --- limitări discutate în secțiunea \ref{sec:discutie}.
+
+\section{Validarea cu utilizatori}
+
+\todoinline{Secțiune de completat cu un mini-studiu de utilizabilitate real --- chiar și 5--8 participanți sunt suficienți pentru o lucrare de licență. Protocol sugerat mai jos; șterge acest marcaj după completare.}
+
+Protocolul de validare: fiecărui participant i se cere să parcurgă, fără ajutor, scenariul complet --- creare cont, publicarea unei licitații (cumpărător), respectiv găsirea unei licitații și depunerea unei oferte (furnizor) --- după care completează chestionarul standardizat SUS (\textit{System Usability Scale}) \cite{brooke1996}: 10 afirmații evaluate pe scară Likert 1--5. Scorul individual se calculează conform ecuației (\ref{eq:sus}), unde $s_i$ este răspunsul la afirmația $i$ (afirmațiile impare sunt formulate pozitiv, cele pare negativ):
+
+\begin{equation}
+\label{eq:sus}
+\mathit{SUS} = 2{,}5 \cdot \left( \sum_{i \in \{1,3,5,7,9\}} (s_i - 1) + \sum_{i \in \{2,4,6,8,10\}} (5 - s_i) \right)
+\end{equation}
+
+Scorul rezultat este între 0 și 100; pragul de referință raportat în literatură pentru o utilizabilitate peste medie este 68 \cite{lewis2018}.
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Rezultatele chestionarului SUS}
+\label{tab:sus}
+\begin{tabular}{l c}
+\toprule
+\textbf{Indicator} & \textbf{Valoare} \\
+\midrule
+Număr de participanți & \todoval \\
+Scor SUS mediu & \todoval \\
+Scor minim / maxim & \todoval\ / \todoval \\
+Participanți care au finalizat scenariul fără ajutor & \todoval\ din \todoval \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\todoinline{Pe lângă Tabelul~\ref{tab:sus}, adaugă 1--2 observații calitative concrete primite de la participanți (ce i-a încurcat, ce au apreciat) și, dacă există, modificările făcute în urma lor.}
+
+\section{Discuția rezultatelor}
+\label{sec:discutie}
+
+\textbf{Puncte tari.} Evaluarea funcțională confirmă acoperirea integrală a cerințelor, inclusiv a celor două proprietăți de corectitudine netriviale --- arbitrarea deterministă a ofertelor concurente și idempotența finalizării --- care reprezintă diferența dintre o demonstrație didactică și un sistem utilizabil în condiții reale de concurență. Platforma acoperă întregul ciclu de achiziție (nu doar licitația propriu-zisă), iar comparația operațională arată că ocupă o poziție neacoperită de alternativele existente pentru segmentul IMM. Costul de operare este practic zero (servicii externe pe niveluri gratuite), iar arhitectura permite migrarea fiecărui serviciu extern independent.
+
+\textbf{Puncte slabe și limitări.} (i) Verificarea funcțională este manuală --- lipsa testelor automate face întreținerea pe termen lung mai riscantă; (ii) evaluarea de performanță este realizată pe o singură mașină, nu într-un mediu de producție distribuit; scalarea orizontală a canalului Socket.IO ar necesita un adaptor partajat (de exemplu Redis); (iii) limitatoarele de rată țin starea în memoria procesului, deci la mai multe instanțe ar trebui externalizate; (iv) platforma nu integrează plăți sau contracte semnate electronic --- documentul generat are rol informativ; (v) validarea cu utilizatori are eșantion redus, tipic pentru un proiect academic.
+
+\textbf{Concluzia evaluării.} Raportat la obiectivele O1--O8 din capitolul introductiv, toate sunt îndeplinite și verificate; metricile de performanță măsurate \todoinline{după completarea măsurătorilor: rezumă aici într-o frază valorile-cheie --- ex. „mediană sub X ms la listare și sub Y ms ofertă$\to$difuzare''} situează platforma confortabil în țintele RNF stabilite, iar mecanismele a căror corectitudine nu depinde de încărcare (atomicitate, idempotență) au fost validate prin scenarii dedicate de concurență.

@@ -1,0 +1,341 @@
+\chapter*{Anexe}\addcontentsline{toc}{chapter}{Anexe}
+
+Anexele conțin extrasele de cod prea lungi pentru firul principal al lucrării (Anexa~\ref{anexa:cod}), galeria de capturi de ecran ale platformei (Anexa~\ref{anexa:screenshots}) și ghidul de configurare, rulare și reproducere a măsurătorilor (Anexa~\ref{anexa:rulare}).
+
+\begin{appendices}
+
+\chapter{Extrase de cod}
+\label{anexa:cod}
+
+\section{Handler-ul complet de depunere a unei oferte}
+
+Codul~\ref{lst:place-bid-full} reproduce handler-ul evenimentului \texttt{place\_bid} din \texttt{server/sockets/bidSocket.js} --- validări, arbitrarea atomică, prelungirea automată, difuzarea și notificările. Apelurile de jurnalizare au fost omise pentru lizibilitate.
+
+\begin{lstlisting}[caption={Handler-ul place\_bid (server/sockets/bidSocket.js, fără jurnalizare)},label={lst:place-bid-full}]
+socket.on('place_bid', async (data, callback) => {
+  if (typeof callback !== 'function') callback = () => {};
+  try {
+    const { auctionId, amount, message } = data || {};
+
+    /* Validari de tip / format */
+    if (!auctionId || typeof auctionId !== 'string'
+        || !mongoose.Types.ObjectId.isValid(auctionId)) {
+      return callback({ error: 'ID licitatie invalid' });
+    }
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0 || amt > MAX_BID_VALUE) {
+      return callback({ error: 'Suma oferta invalida' });
+    }
+    if (socket.user.role !== 'supplier') {
+      return callback({ error: 'Doar furnizorii pot oferta' });
+    }
+    const msg = typeof message === 'string'
+      ? message.trim().slice(0, 500) : '';
+
+    /* Citire snapshot pentru validarile de baza */
+    const auctionSnapshot = await Auction.findById(auctionId)
+      .select('buyer status currentPrice deadline autoExtend title');
+    if (!auctionSnapshot) return callback({ error: 'Licitatia nu exista' });
+    if (auctionSnapshot.status !== 'active') {
+      return callback({ error: 'Licitatia nu e activa' });
+    }
+    if (auctionSnapshot.buyer.toString() === socket.user.id) {
+      return callback({ error: 'Nu poti licita la propria licitatie' });
+    }
+
+    /* Regula licitatiei inverse: sub currentPrice cu cel putin pasul minim */
+    const maxAllowed = auctionSnapshot.currentPrice
+      ? auctionSnapshot.currentPrice - MIN_BID_DECREMENT : Infinity;
+    if (amt > maxAllowed) {
+      return callback({ error: `Oferta trebuie sa fie cu cel putin
+        ${MIN_BID_DECREMENT} RON sub pretul curent
+        (max: ${maxAllowed.toFixed(2)} RON)` });
+    }
+
+    /* Update ATOMIC cu garda pe valoarea curenta (anti-race):
+       doar una dintre cererile concurente reuseste. */
+    const updatedAuction = await Auction.findOneAndUpdate(
+      { _id: auctionId, status: 'active',
+        currentPrice: { $gte: amt + MIN_BID_DECREMENT } },
+      { $set: { currentPrice: amt } },
+      { new: true },
+    );
+    if (!updatedAuction) {
+      const fresh = await Auction.findById(auctionId).select('currentPrice');
+      const newMax = fresh
+        ? (fresh.currentPrice - MIN_BID_DECREMENT).toFixed(2) : '?';
+      return callback({ error: `Cineva tocmai a ofertat mai mult.
+        Oferta maxima permisa acum: ${newMax} RON` });
+    }
+
+    /* Ofertele anterioare devin ne-castigatoare; se creeaza noua oferta */
+    await Bid.updateMany({ auction: auctionId, isWinning: true },
+                         { $set: { isWinning: false } });
+    const bid = await Bid.create({
+      auction: auctionId, supplier: socket.user.id,
+      amount: amt, message: msg, isWinning: true,
+    });
+
+    /* winningBid + auto-extend (anti-sniping) */
+    const now = new Date();
+    const updatePatch = { winningBid: bid._id };
+    let deadlineExtended = false;
+    if (updatedAuction.autoExtend
+        && updatedAuction.deadline - now < AUTO_EXTEND_MS
+        && updatedAuction.deadline - now > 0) {
+      updatePatch.deadline = new Date(now.getTime() + AUTO_EXTEND_BY);
+      deadlineExtended = true;
+    }
+    const finalAuction = await Auction.findByIdAndUpdate(
+      auctionId, { $set: updatePatch }, { new: true });
+
+    /* Furnizorul supralicitat = bidul precedent castigator */
+    const previousWinner = await Bid.findOne({
+      auction: auctionId, isWinning: false,
+      supplier: { $ne: socket.user.id },
+    }).sort({ updatedAt: -1 });
+
+    /* Auto-abonare la licitatie */
+    await Subscription.findOneAndUpdate(
+      { user: socket.user.id, auction: auctionId },
+      { user: socket.user.id, auction: auctionId },
+      { upsert: true, new: true });
+
+    /* Difuzare in camera licitatiei */
+    const populatedBid = await Bid.findById(bid._id)
+      .populate('supplier', 'firstName lastName companyName rating');
+    if (deadlineExtended) {
+      io.to(auctionId).emit('deadline_extended',
+                            { newDeadline: finalAuction.deadline });
+    }
+    io.to(auctionId).emit('new_bid', {
+      bid: populatedBid, currentPrice: finalAuction.currentPrice,
+    });
+
+    /* Notificare supralicitat (in-app + email) */
+    if (previousWinner) {
+      const prevUser = await User.findById(previousWinner.supplier)
+        .select('firstName email _id');
+      if (prevUser?.email) {
+        const { subject, html } = outbidTemplate({
+          firstName: prevUser.firstName, auctionTitle: finalAuction.title,
+          newPrice: amt, auctionId });
+        sendMail({ to: prevUser.email, subject, html });
+      }
+      if (prevUser) {
+        await notifyUser(io, prevUser._id.toString(), {
+          type: 'outbid',
+          text: `Ai fost supralicitat la "${finalAuction.title}"
+                 - pret nou: ${amt} RON`,
+          link: `/auction/${auctionId}`,
+        });
+      }
+    }
+
+    /* Notificarea abonatilor, cu deduplicare (fara emitent
+       si fara supralicitat, deja notificat) */
+    const subscriptions = await Subscription.find({ auction: auctionId })
+      .populate('user', 'firstName email _id');
+    const notifiedSet = new Set([socket.user.id]);
+    if (previousWinner?.supplier) {
+      notifiedSet.add(previousWinner.supplier.toString());
+    }
+    const buyerIdStr = finalAuction.buyer.toString();
+    for (const sub of subscriptions) {
+      if (!sub.user) continue;
+      const uid = sub.user._id.toString();
+      if (notifiedSet.has(uid)) continue;
+      notifiedSet.add(uid);
+      const isOwner = uid === buyerIdStr;
+      await notifyUser(io, uid, {
+        type: 'bid',
+        text: isOwner
+          ? `Oferta noua la licitatia ta "${finalAuction.title}": ${amt} RON`
+          : `Oferta noua la "${finalAuction.title}": ${amt} RON`,
+        link: `/auction/${auctionId}`,
+      });
+      if (sub.user.email) {
+        const { subject, html } = newBidTemplate({
+          firstName: sub.user.firstName, auctionTitle: finalAuction.title,
+          amount: amt, auctionId, isOwner });
+        sendMail({ to: sub.user.email, subject, html });
+      }
+    }
+
+    callback({ success: true, bid: populatedBid });
+  } catch (err) {
+    callback({ error: err.message || 'Eroare server' });
+  }
+});
+\end{lstlisting}
+
+\section{Validarea la publicarea unui draft}
+
+Codul~\ref{lst:validate-publish} arată separarea dintre salvarea liberă a drafturilor și validarea strictă aplicată exclusiv la publicare (\texttt{server/routes/auctions.js}).
+
+\begin{lstlisting}[caption={Validarea câmpurilor obligatorii la publicare},label={lst:validate-publish}]
+function validateForPublish(data) {
+  const missing = [];
+  const errors  = {};
+  const str = v => (typeof v === 'string' ? v.trim() : v);
+
+  if (!str(data.title))       { missing.push('title');
+    errors.title = 'Titlul este obligatoriu.'; }
+  if (!str(data.description)) { missing.push('description');
+    errors.description = 'Descrierea este obligatorie.'; }
+  if (!str(data.category))    { missing.push('category');
+    errors.category = 'Categoria este obligatorie.'; }
+  if (!str(data.quantity))    { missing.push('quantity');
+    errors.quantity = 'Cantitatea este obligatorie.'; }
+
+  const sp = Number(data.startPrice);
+  if (data.startPrice === undefined || data.startPrice === null
+      || data.startPrice === '' || isNaN(sp) || sp <= 0) {
+    missing.push('startPrice');
+    errors.startPrice = 'Bugetul de pornire trebuie sa fie un numar pozitiv.';
+  }
+
+  if (!data.deadline) {
+    missing.push('deadline');
+    errors.deadline = 'Deadline-ul este obligatoriu.';
+  } else {
+    const d = new Date(data.deadline);
+    const MIN_DURATION_MS = 5 * 60 * 1000;             // 5 minute
+    const MAX_DURATION_MS = 365 * 24 * 60 * 60 * 1000; // 1 an
+    const now = Date.now();
+    if (isNaN(d.getTime())) {
+      missing.push('deadline');
+      errors.deadline = 'Deadline-ul are un format invalid.';
+    } else if (d.getTime() <= now + MIN_DURATION_MS) {
+      errors.deadline = 'Deadline-ul trebuie sa fie cel putin
+        5 minute in viitor.';
+      if (!missing.includes('deadline')) missing.push('deadline');
+    } else if (d.getTime() > now + MAX_DURATION_MS) {
+      errors.deadline = 'Deadline-ul nu poate fi mai departe
+        de 1 an in viitor.';
+      if (!missing.includes('deadline')) missing.push('deadline');
+    }
+  }
+
+  return { valid: missing.length === 0
+                  && Object.keys(errors).length === 0,
+           missing, errors };
+}
+\end{lstlisting}
+
+\section{Calculul licitațiilor pierdute la limită (close losses)}
+
+Codul~\ref{lst:close-loss} prezintă fragmentul din modulul de statistici care identifică, pentru un furnizor, licitațiile finalizate pierdute cu cel mult 5\% peste oferta câștigătoare (\texttt{server/routes/analytics.js}).
+
+\begin{lstlisting}[caption={Identificarea licitațiilor pierdute la limită},label={lst:close-loss}]
+const CLOSE_LOSS_THRESHOLD_PERCENT = 5;  // diferenta <= 5% => "close loss"
+
+/* Pentru fiecare licitatie finalizata la care furnizorul a participat: */
+const myBest = myBidsHere.reduce(      // cea mai buna oferta proprie =
+  (best, b) => (!best || b.amount < best.amount ? b : best), null);
+
+if (!iWon && finalized && myBest && winner && winner.amount > 0) {
+  const diffAmt     = myBest.amount - winner.amount;
+  const diffPercent = (diffAmt / winner.amount) * 100;
+  if (diffAmt >= 0 && diffPercent <= CLOSE_LOSS_THRESHOLD_PERCENT) {
+    closeLosses.push({
+      auctionId:         aid,
+      auctionTitle:      a.title || 'Licitatie',
+      category:          cat,
+      myBid:             round2(myBest.amount),
+      winningBid:        round2(winner.amount),
+      differenceAmount:  round2(diffAmt),
+      differencePercent: round2(diffPercent),
+      endedAt:           a.endedNotifiedAt || a.updatedAt,
+    });
+  }
+}
+\end{lstlisting}
+
+\chapter{Capturi de ecran ale platformei}
+\label{anexa:screenshots}
+
+Această anexă completează capturile din capitolul \ref{chap:implementare} cu restul ecranelor platformei: pagina de prezentare (Figura~\ref{fig:ss-landing}), autentificarea (Figura~\ref{fig:ss-autentificare}), dashboard-urile celor două roluri (Figurile~\ref{fig:ss-dashboard-cumparator} și \ref{fig:ss-dashboard-furnizor}), ofertele furnizorului (Figura~\ref{fig:ss-ofertele-mele}), mesageria (Figura~\ref{fig:ss-mesagerie}), profilul public cu recenzii (Figura~\ref{fig:ss-profil-public}), setările cu datele de companie (Figura~\ref{fig:ss-setari-companie}), panoul de administrare cu vizualizarea diferențelor (Figurile~\ref{fig:ss-admin-utilizatori} și \ref{fig:ss-admin-diff}), documentul PDF generat (Figura~\ref{fig:ss-pdf-rezumat}) și statisticile pe roluri (Figurile~\ref{fig:ss-statistici-cumparator} și \ref{fig:ss-statistici-furnizor}).
+
+% Recomandare la realizarea capturilor: browser la 1920x1080, zoom 100%,
+% date din seed (realiste), fără date personale reale.
+
+\placeholderfig{0.93}{ss-landing}{6cm}{Captură: pagina de prezentare (landing) --- poate fi folosit fișierul landing-page.png existent în folderul proiect/.}{Pagina de prezentare a platformei}
+
+\placeholderfig{0.93}{ss-autentificare}{6cm}{Captură: pagina de autentificare, cu opțiunea de cont Google și link-urile de înregistrare/resetare parolă.}{Autentificarea în platformă}
+
+\placeholderfig{0.93}{ss-dashboard-cumparator}{6cm}{Captură: dashboard-ul cumpărătorului --- licitațiile proprii cu statusuri (active, draft, închise), carduri de sinteză.}{Dashboard-ul cumpărătorului}
+
+\placeholderfig{0.93}{ss-dashboard-furnizor}{6cm}{Captură: dashboard-ul furnizorului --- licitații active cu filtre și căutare, carduri cu numărul de oferte și cea mai bună ofertă.}{Dashboard-ul furnizorului}
+
+\placeholderfig{0.93}{ss-ofertele-mele}{6cm}{Captură: pagina „Ofertele mele'' a furnizorului --- oferte câștigătoare/depășite, licitații câștigate.}{Ofertele furnizorului}
+
+\placeholderfig{0.93}{ss-mesagerie}{6cm}{Captură: mesageria privată --- lista conversațiilor și o conversație deschisă (eventual cu o imagine trimisă).}{Mesageria privată}
+
+\placeholderfig{0.93}{ss-profil-public}{6cm}{Captură: profilul public al unui utilizator cu rating-ul agregat (stele), distribuția recenziilor și recenziile primite.}{Profilul public cu recenzii și rating}
+
+\placeholderfig{0.93}{ss-setari-companie}{6cm}{Captură: pagina de setări, secțiunea de date companie/fiscale (denumire legală, CUI, Registrul Comerțului, sediu).}{Setările contului --- datele de companie}
+
+\placeholderfig{0.93}{ss-admin-utilizatori}{6cm}{Captură: panoul de administrare --- lista utilizatorilor cu acțiuni (suspendare), filtrare pe rol.}{Panoul de administrare --- gestiunea utilizatorilor}
+
+\placeholderfig{0.93}{ss-admin-diff}{6cm}{Captură: cererea de editare a unei licitații active în panoul admin, cu diferențele vechi/nou evidențiate și acțiunile aprobă/respinge.}{Fluxul de aprobare --- vizualizarea diferențelor}
+
+\placeholderfig{0.93}{ss-pdf-rezumat}{7cm}{Captură: documentul PDF „Rezumat de tranzacție'' generat de platformă (antet cu număr, părți cu date fiscale, obiectul și suma tranzacției).}{Documentul PDF de rezumat al tranzacției}
+
+\placeholderfig{0.93}{ss-statistici-cumparator}{6.5cm}{Captură: dashboard-ul de statistici al cumpărătorului --- economii totale și procentuale, trend, categorii dominante, furnizori frecvenți.}{Statisticile cumpărătorului}
+
+\placeholderfig{0.93}{ss-statistici-furnizor}{6.5cm}{Captură: dashboard-ul de statistici al furnizorului --- rată de câștig, valoare câștigată, licitații pierdute la limită, distribuția rating-ului.}{Statisticile furnizorului}
+
+\chapter{Configurare, rulare și reproducerea măsurătorilor}
+\label{anexa:rulare}
+
+\section{Variabilele de mediu}
+
+Serverul refuză pornirea fără secretele obligatorii. Fișierul \texttt{server/.env} conține: \texttt{MONGO\_URI} (conexiunea MongoDB), \texttt{JWT\_SECRET} și \texttt{SESSION\_SECRET} (secrete de semnare, minimum 32 de caractere), \texttt{PORT} (implicit 5000), \texttt{CLIENT\_URL} (originea aplicației client, pentru CORS), credențialele Cloudinary (\texttt{CLOUDINARY\_CLOUD\_NAME}, \texttt{CLOUDINARY\_API\_KEY}, \texttt{CLOUDINARY\_API\_SECRET}), contul de email (\texttt{EMAIL\_USER}, \texttt{EMAIL\_PASS}, \texttt{EMAIL\_FROM}) și credențialele Google OAuth (\texttt{GOOGLE\_CLIENT\_ID}, \texttt{GOOGLE\_CLIENT\_SECRET}). Clientul folosește \texttt{VITE\_API\_URL} pentru adresa API-ului.
+
+\section{Instalare și rulare locală}
+
+\begin{verbatim}
+# Backend
+cd server
+npm install
+npm run dev          # nodemon, http://localhost:5000
+
+# Frontend (alt terminal)
+cd client
+npm install
+npm run dev          # Vite, http://localhost:5173
+
+# Date de test (optional)
+cd server
+node seed.js --clean # 20 utilizatori, 55 licitatii, oferte simulate
+\end{verbatim}
+
+\section{Reproducerea măsurătorilor de performanță}
+
+Măsurătorile din capitolul \ref{chap:evaluare} se reproduc astfel:
+
+\textbf{1. Debit și latență REST (autocannon):}
+\begin{verbatim}
+npm install -g autocannon
+autocannon -c 50 -d 30 http://localhost:5000/api/auctions
+autocannon -c 50 -d 30 http://localhost:5000/api/auctions/<ID>
+# pentru endpoint-urile autentificate se adauga header-ul de sesiune:
+autocannon -c 50 -d 30 \
+  -H "Cookie: revbid_token=<JWT>" \
+  http://localhost:5000/api/notifications
+\end{verbatim}
+Se raportează coloanele \texttt{Req/Sec} (medie) și latențele p50/p99 afișate de instrument.
+
+\textbf{2. Latența ciclului de ofertare:} se deschid două browsere autentificate cu conturi de furnizor pe aceeași licitație; în consola primului se înregistrează \texttt{performance.now()} imediat înaintea emiterii \texttt{place\_bid} și în callback-ul de confirmare; în al doilea, în handler-ul \texttt{new\_bid}. Diferențele (în ms) se colectează pentru 100 de oferte și se exportă pentru Tabelul~\ref{tab:perf-socket} și Figura~\ref{fig:grafic-latente}.
+
+\textbf{3. Lighthouse:}
+\begin{verbatim}
+cd client
+npm run build
+npm run preview      # build de productie pe http://localhost:4173
+# Chrome DevTools -> tab Lighthouse -> mod Desktop -> Analyze
+\end{verbatim}
+Se rulează auditul pentru landing page, dashboard (autentificat) și pagina unei licitații, completând Tabelul~\ref{tab:lighthouse}.
+
+\end{appendices}

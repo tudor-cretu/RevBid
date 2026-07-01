@@ -1,0 +1,278 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[utf8]{inputenc} % pentru suport diacritice
+\usepackage[T1]{fontenc}    % codificare fonturi — redare corectă ș/ț
+\usepackage[romanian]{babel} % setări pentru limba română
+\renewcommand\familydefault{\sfdefault} % sans serif
+
+\usepackage[margin=2.54cm]{geometry}	% dimensiuni pagină și margini
+\usepackage{graphicx} % support the \includegraphics command and options
+
+% formatting sections and subsections
+\usepackage{textcase}
+\usepackage[titletoc, title]{appendix}
+\usepackage{titlesec}
+\titleformat{\chapter}{\large\bfseries\MakeUppercase}{\thechapter}{2ex}{}[\vspace*{-1.5cm}]
+\titleformat*{\section}{\large\bfseries}
+\titleformat*{\subsection}{\large\bfseries}
+\titleformat*{\subsubsection}{\large\bfseries}
+
+\usepackage{chngcntr}
+\counterwithout{figure}{chapter} % no chapter number in figure labels
+\counterwithout{table}{chapter} % no chapter number in table labels
+\counterwithout{equation}{chapter} % no chapter number in equation labels
+
+\usepackage{booktabs} % for much better looking tables
+\usepackage{url} % Useful for inserting web links nicely
+\usepackage[bookmarks,unicode,hidelinks]{hyperref}
+
+\usepackage{array} % for better arrays (eg matrices) in maths
+\usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
+\usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
+\usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
+\usepackage{enumitem}
+\setlist{noitemsep}
+
+%%% HEADERS & FOOTERS
+\usepackage{fancyhdr}
+\pagestyle{empty}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\lhead{}\chead{}\rhead{}
+\lfoot{}\cfoot{\thepage}\rfoot{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%   Pachete adăugate pentru această lucrare
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{xcolor}
+\usepackage{listings}
+
+% ── Stil pentru secvențele de cod JavaScript/Node.js ──
+\definecolor{codekw}{RGB}{0,51,153}
+\definecolor{codestr}{RGB}{163,21,21}
+\definecolor{codecomment}{RGB}{0,128,0}
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{coderule}{RGB}{200,200,200}
+
+\lstdefinelanguage{JavaScript}{
+  keywords={typeof, new, true, false, catch, function, return, null, undefined,
+            switch, var, if, in, while, do, else, case, break, const, let,
+            await, async, this, of, for, try, throw, delete, continue},
+  keywordstyle=\color{codekw}\bfseries,
+  ndkeywords={class, export, extends, import, require, module},
+  ndkeywordstyle=\color{codekw}\bfseries,
+  identifierstyle=\color{black},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  commentstyle=\color{codecomment}\itshape,
+  stringstyle=\color{codestr},
+  morestring=[b]',
+  morestring=[b]",
+  morestring=[b]`
+}
+
+\lstset{
+  language=JavaScript,
+  basicstyle=\ttfamily\footnotesize,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  breaklines=true,
+  breakatwhitespace=true,
+  frame=single,
+  rulecolor=\color{coderule},
+  backgroundcolor=\color{codebg},
+  tabsize=2,
+  showstringspaces=false,
+  captionpos=b,
+  aboveskip=10pt,
+  belowskip=6pt,
+  literate=%
+    {ă}{{\u{a}}}1 {Ă}{{\u{A}}}1
+    {â}{{\^{a}}}1 {Â}{{\^{A}}}1
+    {î}{{\^{\i}}}1 {Î}{{\^{I}}}1
+    {ș}{{\textcommabelow{s}}}1 {Ș}{{\textcommabelow{S}}}1
+    {ț}{{\textcommabelow{t}}}1 {Ț}{{\textcommabelow{T}}}1
+    {ş}{{\c{s}}}1 {Ş}{{\c{S}}}1
+    {ţ}{{\c{t}}}1 {Ţ}{{\c{T}}}1
+    {—}{{---}}2 {–}{{--}}1
+    {„}{{,,}}1 {”}{{''}}1 {’}{{'}}1 {…}{{...}}2
+    {≥}{{$\geq$}}1 {≤}{{$\leq$}}1 {→}{{$\to$}}1 {←}{{$\gets$}}1
+}
+\renewcommand{\lstlistingname}{Cod}
+
+% ── Marcaje vizibile pentru elementele de completat de către autor ──
+% [TODO: ...] apare cu roșu în PDF — ușor de găsit înainte de predare.
+\newcommand{\todoinline}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+% Valoare numerică ce trebuie măsurată/completată în tabele.
+\newcommand{\todoval}{\textcolor{red}{[de completat]}}
+
+% ── Placeholder pentru figuri ───────────────────────────────────────
+% Utilizare: \placeholderfig{<lățime 0..1>}{<nume-fișier-fără-extensie>}{<înălțime casetă>}{<ce trebuie să conțină>}{<caption>}
+% Înlocuire: șterge \fbox{...} și decomentează linia \includegraphics.
+\newcommand{\placeholderfig}[5]{%
+  \begin{figure}[!ht]
+    \centering
+    % \includegraphics[width=#1\textwidth]{pics/#2}
+    \fbox{\parbox[c][#3][c]{#1\textwidth}{\centering
+      \textcolor{red}{\textbf{[DE ADĂUGAT: \texttt{pics/#2.png}]}}\\[8pt]
+      {\small\itshape #4}}}
+    \caption{#5}
+    \label{fig:#2}
+  \end{figure}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%   Macro-uri pagini de titlu (din template)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\HeaderLineSpace}{-0.25cm}
+\newcommand{\UniTextRO}{UNIVERSITATEA POLITEHNICA DIN BUCUREȘTI \\[\HeaderLineSpace]
+FACULTATEA DE AUTOMATICĂ ȘI CALCULATOARE \\[\HeaderLineSpace]
+DEPARTAMENTUL DE CALCULATOARE\\}
+\newcommand{\DiplomaRO}{PROIECT DE DIPLOMĂ}
+\newcommand{\AdvisorRO}{Coordonator științific:}
+\newcommand{\BucRO}{BUCUREȘTI}
+
+\newcommand{\UniTextEN}{UNIVERSITY POLITEHNICA OF BUCHAREST \\[\HeaderLineSpace]
+FACULTY OF AUTOMATIC CONTROL AND COMPUTERS \\[\HeaderLineSpace]
+COMPUTER SCIENCE AND ENGINEERING DEPARTMENT\\}
+\newcommand{\DiplomaEN}{DIPLOMA PROJECT}
+\newcommand{\AdvisorEN}{Thesis advisor:}
+\newcommand{\BucEN}{BUCHAREST}
+
+\newcommand{\frontPage}[6]{
+\begin{titlepage}
+\begin{center}
+{\Large #1}  % header (university, faculty, department)
+\vspace{50pt}
+\begin{tabular}{p{6cm}p{4cm}}
+% Logo-urile provin din template-ul oficial; dacă lipsesc, se afișează
+% casete placeholder ca documentul să compileze oricum.
+\IfFileExists{pics/upb-logo.jpg}%
+  {\includegraphics[scale=0.8]{pics/upb-logo.jpg}}%
+  {\fbox{\parbox[c][2.8cm][c]{4.5cm}{\centering\small [pics/upb-logo.jpg]}}} &
+	\IfFileExists{pics/cs-logo.pdf}%
+  {\includegraphics[scale=0.5,trim={14cm 11cm 2cm 5cm},clip=true]{pics/cs-logo.pdf}}%
+  {\fbox{\parbox[c][2.8cm][c]{3.2cm}{\centering\small [pics/cs-logo.pdf]}}}
+\end{tabular}
+
+\vspace{105pt}
+{\Huge #2}\\                           % diploma project text
+\vspace{40pt}
+{\Large #3}\\ \vspace{0pt}  % project title
+{\Large #4}\\                          % project subtitle
+\vspace{40pt}
+{\LARGE \Name}\\                   % student name
+\end{center}
+\vspace{60pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}p{6cm}r}
+&{\large\textbf{#5}}\vspace{10pt}\\      % scientific advisor
+&{\large \Advisor}                                    % advisor name
+\end{tabular*}
+\vspace{20pt}
+\begin{center}
+{\large\textbf{#6}}\\                                % bucharest
+\vspace{0pt}
+{\normalsize \Year}
+\end{center}
+\end{titlepage}
+}
+
+\newcommand{\frontPageRO}{\frontPage{\UniTextRO}{\DiplomaRO}{\ProjectTitleRO}{\ProjectSubtitleRO}{\AdvisorRO}{\BucRO}}
+\newcommand{\frontPageEN}{\frontPage{\UniTextEN}{\DiplomaEN}{\ProjectTitleEN}{\ProjectSubtitleEN}{\AdvisorEN}{\BucEN}}
+
+\linespread{1.15}
+\setlength\parindent{0pt}
+\setlength\parskip{.28cm}
+
+%% Abstract macro
+\newcommand{\AbstractPage}{
+\begin{titlepage}
+\textbf{\large SINOPSIS}\par
+\AbstractRO\par\vfill
+\textbf{\large ABSTRACT}\par
+\AbstractEN \vfill
+\end{titlepage}
+}
+
+%% Thank you macro
+\newcommand{\ThanksPage}{
+\begin{titlepage}
+{\noindent \large\textbf{MULȚUMIRI}}\\
+\Thanks
+\end{titlepage}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%%   Câmpurile de mai jos sunt completate de autor
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\ProjectTitleRO}{RevBid --- Platformă web pentru licitații inverse}
+\newcommand{\ProjectSubtitleRO}{Sistem informatic pentru achiziții B2B competitive}
+\newcommand{\ProjectTitleEN}{RevBid --- A Web Platform for Reverse Auctions}
+\newcommand{\ProjectSubtitleEN}{An Information System for Competitive B2B Procurement}
+\newcommand{\Name}{Tudor Crețu}
+% TODO: completează numele coordonatorului științific (ex: Prof. dr. ing. Andrei Ionescu)
+\newcommand{\Advisor}{\todoinline{Titlu Prenume NUME --- coordonator}}
+\newcommand{\Year}{2026}
+
+% Setări document
+\title{Proiect de diplomă}
+\author{\Name}
+\date{\Year}
+
+%%
+%%   Câmpurile aferente rezumatului
+%%
+\newcommand{\AbstractRO}{Lucrarea prezintă proiectarea, implementarea și evaluarea platformei RevBid, un sistem informatic web pentru licitații inverse destinat achizițiilor dintre companii (B2B). Spre deosebire de licitațiile clasice, în licitația inversă cumpărătorul publică o cerere de produse sau servicii, iar furnizorii concurează între ei prin oferte de preț din ce în ce mai mici, câștigând oferta cea mai avantajoasă la momentul închiderii. RevBid acoperă întregul ciclu de viață al unei astfel de achiziții: crearea cererii (inclusiv salvarea ca draft), ofertarea în timp real prin WebSocket --- cu tratarea corectă a ofertelor concurente și prelungirea automată a termenului împotriva practicii de tip „sniping'' ---, închiderea automată programată, notificări multi-canal (aplicație și email), generarea unui document PDF de rezumat al tranzacției, confirmarea bilaterală a livrării și primirii, recenzii reciproce și statistici agregate pentru ambele roluri. Soluția este construită ca aplicație single-page în React, cu un API REST în Node.js/Express, baza de date MongoDB și comunicare în timp real prin Socket.IO, integrând mecanisme de securitate precum autentificarea JWT în cookie httpOnly, controlul accesului pe roluri, limitarea ratei cererilor și jurnalizarea de audit. Evaluarea a urmărit corectitudinea funcțională pe scenarii end-to-end și măsurători de performanță, rezultatele confirmând viabilitatea platformei pentru întreprinderi mici și mijlocii.}
+
+\newcommand{\AbstractEN}{This thesis presents the design, implementation and evaluation of RevBid, a web-based reverse auction system for business-to-business (B2B) procurement. Unlike classical auctions, in a reverse auction the buyer publishes a request for products or services and suppliers compete against each other by submitting increasingly lower price bids, with the most advantageous offer winning at closing time. RevBid covers the entire life cycle of such an acquisition: request creation (including draft saving), real-time bidding over WebSocket --- with correct handling of concurrent bids and automatic deadline extension against sniping ---, scheduled automatic closing, multi-channel notifications (in-app and email), generation of a PDF transaction summary document, bilateral delivery and receipt confirmation, mutual reviews and aggregated statistics for both roles. The solution is built as a single-page application in React, with a REST API in Node.js/Express, a MongoDB database and real-time communication through Socket.IO, integrating security mechanisms such as JWT authentication stored in an httpOnly cookie, role-based access control, request rate limiting and audit logging. The evaluation covered functional correctness on end-to-end scenarios and performance measurements, with results confirming the platform's viability for small and medium enterprises.}
+
+%%
+%%   Câmpurile aferente paginii de mulțumiri
+%%
+% TODO: personalizează sau comentează \ThanksPage din document dacă nu o folosești
+\newcommand{\Thanks}{\todoinline{Opțional --- mulțumiri adresate coordonatorului, familiei, colegilor etc. Dacă nu dorești această pagină, comentează linia \texttt{\textbackslash ThanksPage} de mai jos.}}
+
+\begin{document}
+
+\frontPageRO
+\frontPageEN
+
+\begingroup
+\linespread{1}
+\tableofcontents
+\endgroup
+
+\AbstractPage
+
+% poate fi comentată sau ștearsă
+\ThanksPage
+
+
+% Textul licenței începe de aici
+
+\input{capitole/cap1-introducere}
+\input{capitole/cap2-analiza-cerintelor}
+\input{capitole/cap3-studiu-piata}
+\input{capitole/cap4-solutia-propusa}
+\input{capitole/cap5-implementare}
+\input{capitole/cap6-evaluare}
+\input{capitole/cap7-concluzii}
+
+\chapter*{Bibliografie}\addcontentsline{toc}{chapter}{Bibliografie}
+\vspace*{-2.2cm}
+% Intrările bibliografice sunt definite în bibliography.bib și citate în text cu \cite{...}.
+\begingroup
+\renewcommand{\chapter}[2]{} % suprimă titlul duplicat generat de \bibliography
+\bibliographystyle{plain}
+\bibliography{bibliography}
+\endgroup
+
+\input{capitole/anexe}
+
+\end{document}

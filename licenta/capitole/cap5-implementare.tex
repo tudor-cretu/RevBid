@@ -1,0 +1,313 @@
+\chapter{Detalii de implementare}
+\label{chap:implementare}
+
+Acest capitol detaliază implementarea componentelor prezentate în capitolul \ref{chap:solutia}, cu accent pe punctele care au ridicat dificultăți tehnice reale: arbitrarea ofertelor concurente, idempotența finalizării, autentificarea canalului în timp real, generarea documentelor PDF cu diacritice și securitatea aplicației. Secvențele de cod sunt extrase din proiect (uneori prescurtate pentru lizibilitate); extrasele mai lungi sunt mutate în Anexa~\ref{anexa:cod}.
+
+\section{Organizarea codului}
+
+Proiectul este împărțit în două aplicații independente, fiecare cu propriul \texttt{package.json}:
+
+\begin{itemize}
+    \item \texttt{client/} --- aplicația React: \texttt{src/pages/} (24 de pagini), \texttt{src/components/} (22 de componente), \texttt{src/context/} (starea de autentificare), \texttt{src/utils/} (formatare, apeluri API);
+    \item \texttt{server/} --- API-ul Node.js: \texttt{models/} (14 scheme Mongoose), \texttt{routes/} (13 module REST), \texttt{sockets/} (handler-ele Socket.IO), \texttt{jobs/} (închiderea automată), \texttt{services/} (fluxul de finalizare), \texttt{middleware/} (autentificare, identificator de cerere, jurnalizare HTTP, limitatoare de rată), \texttt{config/} (Cloudinary, mailer, Passport, șabloane de email), \texttt{utils/} (jurnalizare structurată, generare PDF, notificări, validări).
+\end{itemize}
+
+Separarea pe straturi (rută $\to$ serviciu $\to$ model) menține rutele subțiri și mută logica reutilizabilă în servicii și utilitare --- de exemplu, fluxul de finalizare a licitației este un serviciu apelat identic din jobul programat și (la nevoie) din alte puncte.
+
+\section{Autentificarea și gestiunea sesiunilor}
+
+\subsection{Înregistrare și verificarea emailului}
+
+Înregistrarea aplică o politică de parole verificată pe server: minimum 10 caractere, literă mică, literă mare, cifră, caracter special, respingerea secvențelor repetitive și a unei liste de parole comune. Parola este stocată exclusiv ca hash bcrypt \cite{provos1999}; contul rămâne nefuncțional până la introducerea unui cod de verificare de 6 cifre trimis pe email, valabil 15 minute.
+
+\subsection{Sesiuni JWT în cookie httpOnly}
+
+La autentificare, serverul emite un JWT \cite{rfc7519} semnat, cu valabilitate de 7 zile, livrat browserului printr-un cookie cu atribute de securitate explicite (Codul~\ref{lst:cookie}).
+
+\begin{lstlisting}[caption={Setarea cookie-ului de sesiune (server/routes/auth.js)},label={lst:cookie}]
+function setAuthCookie(res, token) {
+  res.cookie('revbid_token', token, {
+    httpOnly: true,                // inaccesibil din JavaScript - protectie XSS
+    secure:   process.env.NODE_ENV === 'production',  // doar HTTPS in productie
+    sameSite: 'lax',               // blocheaza CSRF pe POST/PUT/DELETE
+    maxAge:   TOKEN_TTL_MS,        // 7 zile
+    path:     '/',
+  });
+}
+\end{lstlisting}
+
+Alegerea cookie-ului \texttt{httpOnly} în locul stocării în \texttt{localStorage} (varianta inițială a proiectului) a fost o lecție de securitate aplicată: orice vulnerabilitate XSS ar fi expus direct tokenul; cu \texttt{httpOnly}, scripturile nu îl pot citi, iar atributul \texttt{sameSite=lax} previne trimiterea lui în cereri cross-site de tip POST, închizând vectorul CSRF de bază \cite{owasp2021}. Pe client, sesiunea este restaurată la fiecare încărcare printr-un apel \texttt{GET /api/auth/me} cu \texttt{credentials: 'include'} --- dacă cookie-ul există și e valid, serverul întoarce profilul; altfel starea locală este curățată. Autentificarea federată Google (Passport, OAuth 2.0) creează sau leagă automat contul (utilizatorii Google au \texttt{passwordHash} null), iar resetarea parolei folosește un token aleator din care în baza de date se stochează \textbf{doar hash-ul} --- un atacator cu acces de citire la baza de date nu poate folosi token-urile de resetare.
+
+\section{Ofertarea în timp real}
+
+\subsection{Autentificarea canalului Socket.IO}
+
+Spre deosebire de rutele REST, conexiunea WebSocket este de lungă durată --- un token verificat doar la handshake ar permite unui cont suspendat ulterior să continue să ofereze. Middleware-ul de autentificare al serverului Socket.IO (Codul~\ref{lst:socket-auth}) verifică de aceea atât semnătura JWT, cât și starea \textit{curentă} a contului în baza de date, la fiecare conexiune.
+
+\begin{lstlisting}[caption={Autentificarea conexiunilor Socket.IO (server/sockets/bidSocket.js)},label={lst:socket-auth}]
+io.use(async (socket, next) => {
+  try {
+    /* Tokenul vine din handshake.auth sau din cookie-ul httpOnly */
+    let token = socket.handshake.auth?.token;
+    if (!token && socket.handshake.headers?.cookie) {
+      token = cookie.parse(socket.handshake.headers.cookie).revbid_token || null;
+    }
+    if (!token) return next(new Error('Token lipsa'));
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    /* Verificare in baza de date: un cont suspendat NU se poate
+       conecta, chiar daca JWT-ul lui este inca valid criptografic. */
+    const dbUser = await User.findById(decoded.id)
+                             .select('isBanned role isVerified email');
+    if (!dbUser)         return next(new Error('Utilizator inexistent'));
+    if (dbUser.isBanned) return next(new Error('Cont suspendat'));
+
+    /* Rolul se ia din DB, nu din token - nu poate fi falsificat */
+    socket.user = { id: decoded.id, role: dbUser.role, email: dbUser.email };
+    next();
+  } catch (err) {
+    next(new Error('Token invalid sau expirat'));
+  }
+});
+\end{lstlisting}
+
+După autentificare, fiecare socket intră automat în camera personală \texttt{user\_\textit{id}} (pentru notificări țintite) și poate intra, la cerere, în camerele licitațiilor pe care le vizualizează.
+
+\subsection{Problema ofertelor concurente și soluția atomică}
+\label{sec:atomic}
+
+Cea mai delicată problemă de corectitudine a platformei: două oferte pot sosi practic simultan. O implementare naivă --- citește prețul curent, validează, scrie noul preț --- conține o \textit{race condition} clasică de tip \textit{read--modify--write}: ambele cereri citesc același preț (de exemplu 1\,000 RON), ambele trec validarea (oferte de 990 și 995), ambele scriu, iar rezultatul final depinde de ordinea scrierilor --- prețul poate ajunge la 995 \textit{după} ce fusese deja 990, adică ar \textbf{crește}, încălcând invariantul fundamental al licitației inverse.
+
+Prima versiune a implementării suferea exact de această problemă, observată la testarea cu două sesiuni care ofertau rapid una contra celeilalte. Soluția adoptată mută decizia în baza de date, printr-o actualizare condiționată atomică de tip \textit{compare-and-set} (Codul~\ref{lst:atomic}): condiția de validitate a ofertei este parte din \textbf{filtrul} operației de scriere, iar MongoDB garantează atomicitatea unei operații \texttt{findOneAndUpdate} pe un document \cite{mongodocs}.
+
+\begin{lstlisting}[caption={Arbitrarea atomică a ofertelor concurente (server/sockets/bidSocket.js)},label={lst:atomic}]
+/* Update atomic al currentPrice cu garda pe valoarea curenta.
+   Punctul critic anti-race: doar UNA dintre cererile concurente
+   va gasi currentPrice >= amt + MIN_BID_DECREMENT si va reusi
+   scrierea. Restul primesc null si sunt respinse. */
+const updatedAuction = await Auction.findOneAndUpdate(
+  {
+    _id:          auctionId,
+    status:       'active',
+    currentPrice: { $gte: amt + MIN_BID_DECREMENT },
+  },
+  { $set: { currentPrice: amt } },
+  { new: true },
+);
+
+if (!updatedAuction) {
+  /* Alt furnizor a ofertat intre validare si scriere -
+     recalculam maximul si informam clientul prin callback. */
+  const fresh  = await Auction.findById(auctionId).select('currentPrice');
+  const newMax = (fresh.currentPrice - MIN_BID_DECREMENT).toFixed(2);
+  return callback({
+    error: `Cineva tocmai a ofertat. Oferta maxima permisa acum: ${newMax} RON`,
+  });
+}
+\end{lstlisting}
+
+Corectitudinea se argumentează direct: fie două cereri concurente cu sumele $b_1$ și $b_2$. Serverul de stocare serializează cele două operații atomice într-o ordine oarecare. Prima aplicată găsește condiția $p_{\text{curent}} \geq b + \Delta_{\min}$ adevărată (a fost validată pe un preț cel puțin egal) și scrie $p_{\text{curent}} \gets b$. A doua operație evaluează condiția pe \textbf{noul} preț: dacă oferta ei nu mai este cu cel puțin $\Delta_{\min}$ sub acesta, filtrul nu se potrivește, operația nu modifică nimic și cererea este respinsă cu un mesaj care indică noul maxim admis. Invariantul „prețul curent este strict descrescător în timp'' este astfel garantat indiferent de intercalarea cererilor, fără blocaje (lock-uri) explicite și fără tranzacții.
+
+Restul fluxului (Codul~\ref{lst:autoextend}) marchează atomic ofertele anterioare ca necâștigătoare, creează noua ofertă cu \texttt{isWinning=true}, aplică prelungirea automată a termenului conform ecuației (\ref{eq:autoextend}) și difuzează evenimentele în camera licitației. Emitentul primește rezultatul sincron, prin callback-ul de confirmare Socket.IO.
+
+\begin{lstlisting}[caption={Prelungirea automată anti-sniping și difuzarea (fragment)},label={lst:autoextend}]
+const now = new Date();
+const updatePatch = { winningBid: bid._id };
+let deadlineExtended = false;
+
+if (updatedAuction.autoExtend
+    && updatedAuction.deadline - now < AUTO_EXTEND_MS   // sub 2 min ramase
+    && updatedAuction.deadline - now > 0) {
+  updatePatch.deadline = new Date(now.getTime() + AUTO_EXTEND_BY); // +5 min
+  deadlineExtended = true;
+}
+const finalAuction = await Auction.findByIdAndUpdate(
+  auctionId, { $set: updatePatch }, { new: true });
+
+if (deadlineExtended) {
+  io.to(auctionId).emit('deadline_extended',
+                        { newDeadline: finalAuction.deadline });
+}
+io.to(auctionId).emit('new_bid', {
+  bid:          populatedBid,
+  currentPrice: finalAuction.currentPrice,
+});
+\end{lstlisting}
+
+Handler-ul complet \texttt{place\_bid}, cu toate validările și notificările, este reprodus în Anexa~\ref{anexa:cod}.
+
+\subsection{Sincronizarea interfeței cu evenimentele live}
+
+Pe client, pagina licitației deschide conexiunea la montare, intră în camera licitației și înregistrează ascultători care actualizează starea React; la demontare, conexiunea este curățată (Codul~\ref{lst:client-socket}). Fără această curățare simetrică --- o greșeală frecventă întâlnită și în dezvoltarea proiectului --- navigarea între licitații acumulează ascultători „fantomă'' care procesează evenimente pentru pagini închise (actualizări duplicate, memorie pierdută).
+
+\begin{lstlisting}[caption={Ciclul de viață al conexiunii pe client (fragment adaptat din client/src/pages/AuctionDetail.jsx)},label={lst:client-socket}]
+useEffect(() => {
+  const s = io(API_URL, { auth: { token }, withCredentials: true });
+  s.emit('join_auction', id);
+
+  s.on('new_bid', ({ bid, currentPrice }) => {
+    setAuction(prev => ({ ...prev, currentPrice }));   // pretul curent
+    setBids(prev => [bid, ...prev]);                   // istoricul si graficul
+  });
+  s.on('deadline_extended', ({ newDeadline }) =>
+    setAuction(prev => ({ ...prev, deadline: newDeadline })));
+  s.on('auction_finalized', payload => setOutcome(payload)); // pop-up rezultat
+
+  return () => {                       // curatare simetrica la demontare
+    s.emit('leave_auction', id);
+    s.disconnect();
+  };
+}, [id]);
+\end{lstlisting}
+
+Întrucât starea derivă dintr-o singură sursă (oferta difuzată de server), toate elementele interfeței --- prețul curent, lista ofertelor, graficul de evoluție a prețului (Chart.js) și cronometrul --- se actualizează consistent la fiecare eveniment, fără reîncărcarea paginii. Figura~\ref{fig:ss-detaliu-licitatie} prezintă pagina licitației în timpul unei sesiuni de ofertare.
+
+% ── SCREENSHOT DE FĂCUT: pagina de detaliu a licitației ──
+% Sugestie: o licitație activă cu mai multe oferte (folosește datele din seed),
+% vizibile: prețul curent, cronometrul, graficul de evoluție a prețului,
+% istoricul ofertelor, formularul de ofertare (cont de furnizor).
+\placeholderfig{0.97}{ss-detaliu-licitatie}{8cm}{Captură de ecran: pagina de detaliu a unei licitații active --- preț curent, cronometru cu deadline, grafic de evoluție a prețului (Chart.js), istoric de oferte în timp real, formular de ofertare.}{Pagina licitației în timpul ofertării live}
+
+\section{Închiderea automată și finalizarea idempotentă}
+
+Un job \texttt{node-cron} rulează la fiecare minut: închide licitațiile active cu termenul depășit și declanșează fluxul de finalizare; tot el trimite alertele „mai puțin de o oră'' către furnizorii care au ofertat. Dificultatea reală nu este planificarea, ci \textbf{idempotența}: fluxul de finalizare trimite emailuri și generează documente --- efecte externe care nu pot fi „derulate înapoi''. Dacă serverul repornește în mijlocul procesării, sau dacă două execuții s-ar suprapune, utilizatorii ar primi notificări duplicate și documente duplicate.
+
+Soluția reutilizează exact tehnica de la ofertare: revendicarea exclusivă printr-o actualizare condiționată atomică (Codul~\ref{lst:idempotent}). Doar execuția care reușește să comute indicatorul \texttt{endNotificationsSent} din fals în adevărat continuă fluxul; orice altă execuție găsește filtrul nepotrivit și se oprește imediat.
+
+\begin{lstlisting}[caption={Garda de idempotență a finalizării (server/services/auctionNotify.js)},label={lst:idempotent}]
+/* Garda atomica - revendica finalizarea o singura data. */
+const auction = await Auction.findOneAndUpdate(
+  { _id: auctionId, endNotificationsSent: { $ne: true } },
+  { $set: { endNotificationsSent: true, endedNotifiedAt: new Date() } },
+  { new: true }
+).populate('buyer', 'firstName lastName email companyName company');
+
+if (!auction) return;  // alta executie a revendicat deja finalizarea
+\end{lstlisting}
+
+Fluxul propriu-zis determină câștigătorul (oferta marcată \texttt{isWinning}, cu rezervă pe minimul efectiv), emite imediat evenimentul live \texttt{auction\_finalized} către cei aflați pe pagină, apoi notifică pe niveluri de prioritate cu deduplicare strictă printr-o mulțime de utilizatori deja tratați: câștigătorul, cumpărătorul, furnizorii necâștigători (fiecare cu propria cea mai bună ofertă menționată în mesaj) și abonații care nu au ofertat --- fiecare utilizator primește exact o notificare in-app și un email per eveniment.
+
+\section{Documentele PDF și numerotarea secvențială}
+
+La finalizarea cu câștigător, sistemul generează documentul „Rezumat de tranzacție'': părțile (cu datele fiscale copiate ca \textit{snapshot}), obiectul licitației, suma finală și momentul finalizării. Numărul documentului trebuie să fie unic și secvențial per an (\texttt{RB-TS-2026-000042}); secvența este obținută dintr-un contor incrementat atomic în MongoDB (Codul~\ref{lst:counter}) --- aceeași operație \texttt{findOneAndUpdate}, de această dată cu \texttt{\$inc} și \texttt{upsert}, garantează că două finalizări simultane nu pot primi același număr.
+
+\begin{lstlisting}[caption={Contorul atomic de numerotare (server/models/Counter.js) și utilizarea lui},label={lst:counter}]
+counterSchema.statics.next = async function (key) {
+  const doc = await this.findByIdAndUpdate(
+    key,
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }   // creat automat la prima folosire
+  );
+  return doc.seq;
+};
+
+/* La generarea documentului: */
+const year = new Date().getFullYear();
+const seq  = await Counter.next(`invoice-${year}`);
+const invoiceNumber = `RB-TS-${year}-${String(seq).padStart(6, '0')}`;
+\end{lstlisting}
+
+PDF-ul este desenat programatic cu PDFKit. O dificultate practică neașteptată: fonturile standard PDF (Helvetica) nu conțin glifele românești \textit{ș/ț cu virgulă}, iar documentele rezultate afișau caractere lipsă. Soluția implementată detectează la pornire un font TrueType de sistem cu acoperire completă (Calibri/Arial pe Windows, Liberation/DejaVu pe Linux) și îl înglobează în document (Codul~\ref{lst:fonts}); lista de candidați acoperă ambele platforme pe care rulează proiectul.
+
+\begin{lstlisting}[caption={Detectarea fonturilor cu diacritice pentru PDF (server/utils/invoiceDoc.js)},label={lst:fonts}]
+function findFont(candidates) {
+  for (const p of candidates) {
+    try { fs.accessSync(p, fs.constants.R_OK); return p; } catch (_) {}
+  }
+  return null;
+}
+
+const FONT_PATH = findFont([
+  'C:\\Windows\\Fonts\\calibri.ttf',
+  'C:\\Windows\\Fonts\\arial.ttf',
+  '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+]);
+\end{lstlisting}
+
+Documentul generat este atașat automat emailurilor de finalizare trimise ambelor părți și poate fi re-descărcat oricând din platformă; un exemplu este inclus în Anexa~\ref{anexa:screenshots} (Figura~\ref{fig:ss-pdf-rezumat}).
+
+\section{Notificările multi-canal}
+
+Toate evenimentele relevante (ofertă nouă, supralicitare, finalizare, confirmări, recenzii, chat) trec printr-un utilitar unic \texttt{notifyUser} care (i) persistă notificarea în baza de date și (ii) o emite live în camera personală a destinatarului, dacă acesta este conectat. Persistența-întâi garantează că nimic nu se pierde: la următoarea conectare, serverul livrează automat notificările necitite acumulate offline (cele mai recente 50), iar clopoțelul din bara de navigare se sincronizează. În paralel, evenimentele importante trimit și emailuri pe șabloane HTML dedicate (ofertă nouă, supralicitare, câștig --- cu PDF atașat, licitație pierdută, termen aproape de expirare, confirmări de livrare/primire, resetare parolă).
+
+Centrul de notificări --- pagină dedicată cu listare paginată, filtre pe categorii, căutare în text și marcare individuală sau în masă citit/necitit --- este prezentat în Figura~\ref{fig:ss-notificari}.
+
+% ── SCREENSHOT DE FĂCUT: centrul de notificări ──
+\placeholderfig{0.95}{ss-notificari}{7cm}{Captură de ecran: pagina centrului de notificări, cu filtre pe categorii, căutare, paginare și marcare citit/necitit; ideal cu notificări de tipuri diferite (ofertă, supralicitare, finalizare, recenzie).}{Centrul de notificări al platformei}
+
+\section{Fluxul post-licitație: confirmări și recenzii}
+
+Starea post-licitație este materializată \textit{lazy}: documentul de completare se creează la prima interacțiune, pe baza documentului de tranzacție, iar un eventual conflict de creare concurentă (două cereri simultane) este rezolvat prin constrângerea de unicitate pe licitație --- excepția de cheie duplicată este prinsă și documentul existent este reutilizat. Confirmările sunt strict autorizate pe rol (doar furnizorul câștigător confirmă livrarea; doar cumpărătorul confirmă primirea), iar fiecare confirmare notifică cealaltă parte; când ambele există, sistemul deblochează recenziile și anunță simultan ambii utilizatori.
+
+Recenziile aplică trei reguli de integritate: (i) disponibile doar părților implicate și doar după dubla confirmare; (ii) o singură recenzie per parte per licitație --- garantată de un index unic compus (licitație, autor), dublat de tratarea excepției de duplicat; (iii) rating întreg între 1 și 5, comentariu limitat la 1\,000 de caractere, totul limitat la 5 recenzii pe zi per utilizator. După fiecare recenzie, rating-ul agregat al destinatarului este recalculat conform ecuației (\ref{eq:rating}) printr-o agregare MongoDB (Codul~\ref{lst:rating}) și memorat pe profil.
+
+\begin{lstlisting}[caption={Recalcularea rating-ului agregat (server/routes/reviews.js)},label={lst:rating}]
+async function recomputeUserRating(userId) {
+  const agg = await Review.aggregate([
+    { $match: { reviewee: new mongoose.Types.ObjectId(String(userId)),
+                isHidden: { $ne: true } } },
+    { $group: { _id: null, avg: { $avg: '$rating' },
+                count: { $sum: 1 } } },
+  ]);
+  await User.findByIdAndUpdate(userId, {
+    rating:      Math.round((agg[0]?.avg || 0) * 10) / 10,
+    reviewCount: agg[0]?.count || 0,
+  });
+}
+\end{lstlisting}
+
+\section{Statisticile agregate}
+
+Modulul de statistici răspunde la întrebarea „ce valoare îmi aduce platforma?'', diferit pe rol. Pentru \textbf{cumpărător}: economiile totale și procentuale față de bugetul de referință (prețul țintă dacă există, altfel bugetul de pornire), bugetul total publicat, media ofertelor primite per licitație, timpul mediu până la prima ofertă, categoriile dominante, furnizorii câștigători frecvenți și trendul zilnic al economiilor. Pentru \textbf{furnizor}: rata de câștig, valoarea totală și medie câștigată, distribuția stărilor ofertelor, distribuția rating-ului pe stele și --- un indicator orientat spre acțiune --- \textit{licitațiile pierdute la limită} (\textit{close losses}): licitații finalizate în care cea mai bună ofertă proprie a fost cu cel mult 5\% peste oferta câștigătoare, adică exact oportunitățile la care o ajustare mică de preț ar fi schimbat rezultatul.
+
+Calculele sunt efectuate la cerere, prin combinarea interogărilor indexate cu agregări MongoDB (grupări pe categorie, pe zi, pe stele), exclusiv pe datele reale ale utilizatorului; perioada este parametrizabilă (30/90 de zile sau tot istoricul). Dashboard-urile afișează indicatorii sintetici, graficele de trend și listele detaliate (Figurile~\ref{fig:ss-statistici-cumparator} și \ref{fig:ss-statistici-furnizor} din Anexa~\ref{anexa:screenshots}); un extras din implementarea agregărilor este inclus în Anexa~\ref{anexa:cod}.
+
+\section{Securitatea aplicației}
+
+Măsurile de securitate sunt distribuite pe toate nivelurile aplicației, conform recomandărilor OWASP \cite{owasp2021}:
+
+\begin{itemize}
+    \item \textbf{Pornire fail-fast} --- serverul refuză să pornească fără secretele de mediu (JWT, sesiuni) sau cu secrete prea scurte; nu există valori implicite hardcodate;
+    \item \textbf{Antete de securitate} --- middleware-ul Helmet setează automat X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security etc.; CORS este restricționat la originea aplicației client, cu credențiale;
+    \item \textbf{Validarea intrărilor} --- identificatorii sunt validați ca ObjectId înainte de orice interogare (prevenind erori de tip cast și sondarea bazei), sumele sunt verificate ca numere finite în limite de business, textele sunt limitate în lungime;
+    \item \textbf{Autorizare pe proprietate} --- fiecare mutație verifică explicit proprietarul resursei; drafturile altui utilizator răspund cu 404 (nu 403), pentru a nu confirma existența resursei;
+    \item \textbf{Limitarea ratei} --- operațiunile sensibile au limitatoare dedicate (Tabelul~\ref{tab:rate-limits}), cu cheie per utilizator autentificat sau per IP (cu normalizare IPv6), astfel încât utilizatorii din spatele aceluiași NAT să nu se blocheze reciproc; autentificarea are propriul contor de încercări eșuate;
+    \item \textbf{Jurnalizare structurată} --- fiecare cerere primește un identificator unic propagat în toate înregistrările; evenimentele sunt clasificate (audit / securitate / eroare), iar datele sensibile (emailuri, identificatori fiscali) sunt mascate înainte de scriere; acțiunile administrative au jurnal de audit propriu;
+    \item \textbf{Igienă a erorilor} --- handler-ul global de erori nu expune stack trace-uri în producție.
+\end{itemize}
+
+\begin{table}[!ht]\small\linespread{1}
+\centering
+\caption{Limitatoarele de rată configurate pe operațiunile sensibile}
+\label{tab:rate-limits}
+\begin{tabular}{>{\raggedright\arraybackslash}p{6cm} l l}
+\toprule
+\textbf{Operațiune} & \textbf{Limită} & \textbf{Fereastră} \\
+\midrule
+Autentificare (încercări eșuate / email) & 5 & 15 minute \\
+Creare licitație & 20 & 1 oră \\
+Mesaje private & 30 & 1 minut \\
+Chat licitație & 60 & 1 minut \\
+Recenzii & 5 & 24 ore \\
+Descărcare documente & 20 & 1 minut \\
+Încărcare imagini & 30 & 1 oră \\
+Cereri editare/ștergere & 10 & 1 oră \\
+Formular suport & 3 & 1 oră \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Interfața cu utilizatorul}
+
+Interfața --- integral în limba română, cu diacritice corecte în aplicație, emailuri și PDF-uri --- este organizată în jurul dashboard-urilor pe rol. Crearea licitației folosește un formular cu salvare ca draft în orice moment și validare completă doar la publicare, cu erori per câmp întoarse de server (Figura~\ref{fig:ss-creare-licitatie}); locația se alege pe hartă (Leaflet), iar imaginile se încarcă direct în Cloudinary. Paginile de listare oferă căutare, filtre pe categorii și status, iar cardurile licitațiilor afișează numărul de oferte și cea mai bună ofertă, calculate printr-o singură agregare pe lot (nu N interogări).
+
+% ── SCREENSHOT DE FĂCUT: formularul de creare licitație ──
+\placeholderfig{0.95}{ss-creare-licitatie}{7cm}{Captură de ecran: formularul de creare a unei licitații --- câmpurile principale, butoanele „Salvează ca draft'' și „Publică''; ideal cu erorile de validare vizibile pe un câmp (de exemplu deadline în trecut).}{Crearea unei licitații cu opțiunea de salvare ca draft}
+
+Galeria completă de capturi (autentificare, dashboard-uri, ofertele mele, mesagerie, profil public cu recenzii, setări cu date de companie, panoul de administrare cu diferențele vechi/nou) este inclusă în Anexa~\ref{anexa:screenshots}.
+
+\section{Datele de test}
+
+Pentru dezvoltare și evaluare a fost construit un script de populare reproductibil (\texttt{server/seed.js}): 8 cumpărători și 12 furnizori cu date de companie realiste, 55 de licitații distribuite pe categorii și stări (active, închise, anulate, drafturi) și oferte simulate pe licitațiile active și închise. Scriptul acceptă opțiunea \texttt{--clean} (golire și repopulare) și a fost folosit ca bază pentru scenariile de evaluare din capitolul \ref{chap:evaluare} și pentru capturile de ecran din lucrare.

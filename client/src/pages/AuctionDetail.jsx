@@ -42,6 +42,8 @@ export default function AuctionDetail() {
   const [segments,     setSegments]     = useState([]);
   const [expired,      setExpired]      = useState(false);
   const [activeImg,    setActiveImg]    = useState(0);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError,     setImageError]     = useState('');
 
   // Approval requests state (buyer)
   const [myRequests,   setMyRequests]   = useState([]);
@@ -74,6 +76,13 @@ export default function AuctionDetail() {
       buyerId: auction?.buyer?._id || auction?.buyer || null,
     };
   }, [user, bids, auction]);
+
+  /* Clamp activeImg dacă imaginile s-au redus (după ștergere). */
+  useEffect(() => {
+    const len = auction?.images?.length ?? 0;
+    if (len > 0 && activeImg >= len) setActiveImg(len - 1);
+    if (len === 0) setActiveImg(0);
+  }, [auction?.images?.length]);
 
   useEffect(() => {
     fetchAuction(); fetchSubscription(); fetchBids(); connectSocket();
@@ -266,6 +275,50 @@ export default function AuctionDetail() {
       await fetch(`${API_URL}/api/auction-requests/${requestId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
       fetchMyRequests();
     } catch {}
+  };
+
+  /* ── Gestionare imagini ────────────────────────────────────── */
+  const handleImageUpload = async (files) => {
+    if (!files?.length) return;
+    const currentCount = auction?.images?.length ?? 0;
+    const MAX_IMAGES   = 10;
+    if (currentCount >= MAX_IMAGES) {
+      setImageError(`Limita de ${MAX_IMAGES} imagini a fost atinsă.`);
+      return;
+    }
+    setImageUploading(true);
+    setImageError('');
+    try {
+      const formData = new FormData();
+      /* Trimite maxim atâtea fișiere câte mai încap până la limită */
+      const allowed = Math.min(files.length, MAX_IMAGES - currentCount, 5);
+      Array.from(files).slice(0, allowed).forEach(f => formData.append('images', f));
+      const res  = await fetch(`${API_URL}/api/upload/auction/${id}`, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body:    formData,
+      });
+      const data = await res.json();
+      if (!res.ok) { setImageError(data.message || 'Eroare la upload.'); return; }
+      setAuction(prev => prev ? { ...prev, images: data.images } : prev);
+      /* Selectează ultima imagine adăugată */
+      setActiveImg(data.images.length - 1);
+    } catch { setImageError('Eroare de conexiune.'); }
+    finally { setImageUploading(false); }
+  };
+
+  const handleImageDelete = async (publicId) => {
+    if (!publicId) return;
+    setImageError('');
+    try {
+      const res  = await fetch(`${API_URL}/api/upload/image/${id}/${encodeURIComponent(publicId)}`, {
+        method:  'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { setImageError(data.message || 'Eroare la ștergere.'); return; }
+      setAuction(prev => prev ? { ...prev, images: data.images } : prev);
+    } catch { setImageError('Eroare de conexiune.'); }
   };
   const [socketReady, setSocketReady] = useState(false);
 
@@ -518,46 +571,134 @@ export default function AuctionDetail() {
           {/* ═══ LEFT ═══ */}
           <div className="ad-left">
 
-            {/* Galerie */}
-            {auction.images?.length > 0 ? (
+            {/* Galerie imagini — buyers pot adăuga / șterge oricând */}
+            {(auction.images?.length > 0 || isBuyer) ? (
               <div className="ad-gallery">
-                <div className="ad-gallery-main">
-                  <img
-                    key={activeImg}
-                    src={auction.images[activeImg]?.url}
-                    alt={auction.title}
-                    className="ad-gallery-main-img"
-                    onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                  />
-                  <div className="ad-gallery-placeholder" style={{ display: 'none' }}>
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted-gray)" strokeWidth="1.2">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
-                    </svg>
-                    <span>Imagine indisponibilă</span>
-                  </div>
-                  {auction.images.length > 1 && (
-                    <span className="ad-gallery-counter">{activeImg + 1} / {auction.images.length}</span>
-                  )}
-                </div>
-                {auction.images.length > 1 && (
-                  <div className="ad-gallery-thumbs">
-                    {auction.images.map((img, i) => (
+
+                {/* ── Previzualizare principală ── */}
+                {auction.images?.length > 0 ? (
+                  <div className="ad-gallery-main">
+                    <img
+                      key={activeImg}
+                      src={auction.images[activeImg]?.url}
+                      alt={auction.title}
+                      className="ad-gallery-main-img"
+                      onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                    />
+                    <div className="ad-gallery-placeholder" style={{ display: 'none' }}>
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted-gray)" strokeWidth="1.2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
+                      </svg>
+                      <span>Imagine indisponibilă</span>
+                    </div>
+                    {auction.images.length > 1 && (
+                      <span className="ad-gallery-counter">{activeImg + 1} / {auction.images.length}</span>
+                    )}
+                    {/* Buton ștergere imagine activă — vizibil la hover, doar buyer */}
+                    {isBuyer && auction.images[activeImg]?.publicId && (
                       <button
-                        key={i}
-                        className={`ad-gallery-thumb ${i === activeImg ? 'active' : ''}`}
-                        onClick={() => setActiveImg(i)}
-                        aria-label={`Imaginea ${i + 1}`}
-                        title={`Imaginea ${i + 1}`}
+                        className="ad-gallery-del-main"
+                        onClick={() => handleImageDelete(auction.images[activeImg].publicId)}
+                        disabled={imageUploading}
+                        title="Șterge această imagine"
                       >
-                        <img
-                          src={img.url}
-                          alt={`${auction.title} — ${i + 1}`}
-                          className="ad-gallery-thumb-img"
-                          onError={e => { e.target.style.display = 'none'; }}
-                        />
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                        </svg>
+                        Șterge
                       </button>
-                    ))}
+                    )}
                   </div>
+                ) : (
+                  /* Zonă upload mare — când buyer n-are încă imagini */
+                  <label className="ad-gallery-upload-zone">
+                    <input
+                      type="file" accept="image/*" multiple hidden
+                      onChange={e => { handleImageUpload(e.target.files); e.target.value = ''; }}
+                      disabled={imageUploading}
+                    />
+                    {imageUploading ? (
+                      <div className="spinner" style={{ width: 36, height: 36 }} />
+                    ) : (
+                      <>
+                        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--bid-teal)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2"/>
+                          <circle cx="8.5" cy="8.5" r="1.5"/>
+                          <path d="m21 15-5-5L5 21"/>
+                          <line x1="12" y1="8" x2="12" y2="14" strokeWidth="2"/>
+                          <line x1="9"  y1="11" x2="15" y2="11" strokeWidth="2"/>
+                        </svg>
+                        <span className="ad-gallery-upload-zone-title">Adaugă fotografii</span>
+                        <span className="ad-gallery-upload-zone-sub">Click pentru a selecta · JPG, PNG, WEBP · max 10 imagini</span>
+                      </>
+                    )}
+                  </label>
+                )}
+
+                {/* ── Miniaturi + buton upload ── */}
+                {(auction.images?.length > 1 || isBuyer) && (
+                  <div className="ad-gallery-thumbs">
+                    {auction.images?.map((img, i) => (
+                      <div key={img.publicId || i} className="ad-gallery-thumb-wrap">
+                        <button
+                          className={`ad-gallery-thumb ${i === activeImg ? 'active' : ''}`}
+                          onClick={() => setActiveImg(i)}
+                          aria-label={`Imaginea ${i + 1}`}
+                          title={`Imaginea ${i + 1}`}
+                        >
+                          <img
+                            src={img.url}
+                            alt={`${auction.title} — ${i + 1}`}
+                            className="ad-gallery-thumb-img"
+                            onError={e => { e.target.style.display = 'none'; }}
+                          />
+                        </button>
+                        {/* X ștergere miniatură — doar buyer */}
+                        {isBuyer && img.publicId && (
+                          <button
+                            className="ad-gallery-thumb-del"
+                            onClick={() => handleImageDelete(img.publicId)}
+                            disabled={imageUploading}
+                            title="Șterge imaginea"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* + Adaugă imagine — buyer, dacă nu s-a atins limita */}
+                    {isBuyer && (auction.images?.length ?? 0) < 10 && (
+                      <label
+                        className={`ad-gallery-thumb-add ${imageUploading ? 'loading' : ''}`}
+                        title={imageUploading ? 'Se încarcă...' : 'Adaugă imagine'}
+                      >
+                        <input
+                          type="file" accept="image/*" multiple hidden
+                          onChange={e => { handleImageUpload(e.target.files); e.target.value = ''; }}
+                          disabled={imageUploading}
+                        />
+                        {imageUploading ? (
+                          <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
+                        ) : (
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                          </svg>
+                        )}
+                      </label>
+                    )}
+                  </div>
+                )}
+
+                {/* Mesaj eroare / limită atinsă */}
+                {imageError && (
+                  <div className="ad-gallery-error">
+                    <span>❌ {imageError}</span>
+                    <button onClick={() => setImageError('')}>✕</button>
+                  </div>
+                )}
+                {isBuyer && (auction.images?.length ?? 0) >= 10 && (
+                  <p className="ad-gallery-limit">Limita de 10 imagini a fost atinsă.</p>
                 )}
               </div>
             ) : (
@@ -1063,9 +1204,89 @@ const adCSS = `
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; color: var(--muted-gray); font-size: 0.8125rem;
 }
+
+/* ── Upload zone (empty state buyer) ── */
+.ad-gallery-upload-zone {
+  width: 100%; height: 240px;
+  background: rgba(0,169,157,0.04);
+  border: 2px dashed var(--bid-teal);
+  border-radius: var(--radius-lg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.ad-gallery-upload-zone:hover { background: rgba(0,169,157,0.09); border-color: #009088; }
+.ad-gallery-upload-zone-title { font-size: 1rem; font-weight: 700; color: var(--bid-teal); }
+.ad-gallery-upload-zone-sub   { font-size: 0.75rem; color: var(--text-muted); }
+
+/* ── Buton ștergere pe imaginea principală ── */
+.ad-gallery-del-main {
+  position: absolute; top: 10px; right: 10px;
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(17,24,39,0.65); color: #fff;
+  border: none; border-radius: var(--radius-md);
+  padding: 5px 11px; font-size: 0.8125rem; font-weight: 600;
+  cursor: pointer; backdrop-filter: blur(4px);
+  opacity: 0; transition: opacity 0.15s, background 0.15s;
+  pointer-events: none;
+}
+.ad-gallery-main:hover .ad-gallery-del-main {
+  opacity: 1; pointer-events: auto;
+}
+.ad-gallery-del-main:hover { background: rgba(220,38,38,0.85); }
+.ad-gallery-del-main:disabled { opacity: 0.4; pointer-events: none; }
+
+/* ── Wrapper miniatură + buton ștergere ── */
+.ad-gallery-thumb-wrap { position: relative; flex-shrink: 0; }
+.ad-gallery-thumb-del {
+  position: absolute; top: -5px; right: -5px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--error-red, #DC2626); color: #fff;
+  border: 2px solid #fff; font-size: 0.75rem; line-height: 1;
+  cursor: pointer; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.15s, transform 0.15s;
+  transform: scale(0.7); z-index: 2;
+}
+.ad-gallery-thumb-wrap:hover .ad-gallery-thumb-del {
+  opacity: 1; transform: scale(1);
+}
+.ad-gallery-thumb-del:disabled { opacity: 0.3 !important; pointer-events: none; }
+
+/* ── Buton + adaugă imagine ── */
+.ad-gallery-thumb-add {
+  flex-shrink: 0; width: 72px; height: 72px;
+  border-radius: var(--radius-md);
+  border: 2px dashed var(--bid-teal);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--bid-teal);
+  background: rgba(0,169,157,0.04);
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.ad-gallery-thumb-add:hover { background: rgba(0,169,157,0.12); transform: translateY(-2px); }
+.ad-gallery-thumb-add.loading { opacity: 0.55; pointer-events: none; cursor: default; }
+
+/* ── Mesaj eroare upload ── */
+.ad-gallery-error {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.8125rem; color: #991B1B;
+  background: #FEF2F2; border: 1px solid #FCA5A5;
+  border-radius: var(--radius-md); padding: 7px 12px;
+}
+.ad-gallery-error button {
+  background: none; border: none; cursor: pointer;
+  font-size: 1rem; color: inherit; padding: 0 2px; line-height: 1;
+}
+.ad-gallery-limit {
+  font-size: 0.75rem; color: var(--text-muted); text-align: center; margin: 0;
+}
+
 @media (max-width: 600px) {
   .ad-gallery-main { height: 230px; }
   .ad-gallery-thumb { width: 60px; height: 60px; }
+  .ad-gallery-thumb-add { width: 60px; height: 60px; }
+  .ad-gallery-upload-zone { height: 190px; }
 }
 
 /* ── Price hero ── */
